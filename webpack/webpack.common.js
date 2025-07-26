@@ -8,6 +8,7 @@ module.exports = {
         popup: path.resolve(__dirname, '../src/popup/index.js'),
         content: path.resolve(__dirname, '../src/content/content.js'),
         injected: path.resolve(__dirname, '../src/injected/detector.js'),
+        'event-tracker': path.resolve(__dirname, '../src/injected/event-tracker.js'),
         background: path.resolve(__dirname, '../src/background/service-worker.js'),
     },
     output: {

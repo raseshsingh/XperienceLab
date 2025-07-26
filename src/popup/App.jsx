@@ -5,6 +5,7 @@ import { MESSAGES, PLATFORMS, STORAGE_KEYS } from '../utils/constants';
 import Header from './components/Header/Header';
 import PlatformDetector from './components/PlatformDetector/PlatformDetector';
 import ExperimentList from './components/ExperimentList/ExperimentList';
+import EventTracker from './components/EventTracker/EventTracker';
 import LoadingSpinner from './components/shared/LoadingSpinner/LoadingSpinner';
 import ErrorMessage from './components/shared/ErrorMessage/ErrorMessage';
 import './App.css';
@@ -63,7 +64,7 @@ function App() {
         };
 
         history.unshift(entry);
-        if (history.length > 50) history.pop(); // Keep last 50 entries
+        if (history.length > 50) history.pop();
 
         await Storage.set(STORAGE_KEYS.EXPERIMENT_HISTORY, history);
     };
@@ -131,6 +132,8 @@ function App() {
                     <p>Supported platforms: Convert, VWO, Optimizely</p>
                 </div>
             )}
+
+            {platform === PLATFORMS.OPTIMIZELY && <EventTracker />}
         </div>
     );
 }

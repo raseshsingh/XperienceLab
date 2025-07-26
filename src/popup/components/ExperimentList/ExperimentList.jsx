@@ -2,7 +2,7 @@ import React, { useEffect } from 'react';
 import { PLATFORMS } from '../../../utils/constants';
 import ConvertExperiment from './ConvertExperiment';
 import VWOExperiments from './VWOExperiments';
-import OptimizelyExperiment from './OptimizelyExperiment';
+import OptimizelyExperiments from './OptimizelyExperiments';
 import './ExperimentList.css';
 
 function ExperimentList({ platform, data, onExperimentUpdate }) {
@@ -46,25 +46,6 @@ function ConvertExperiments({ data, onUpdate }) {
             experimentId={experimentId}
             details={details}
             variations={experiments[experimentId]?.vars || {}}
-            onUpdate={onUpdate}
-        />
-    ));
-}
-
-function OptimizelyExperiments({ data, onUpdate }) {
-    const { experiments, appliedVariations, activeExperiments } = data;
-
-    if (!activeExperiments || activeExperiments.length === 0) {
-        return <p className="no-experiments">No active experiments found.</p>;
-    }
-
-    return activeExperiments.map(experimentId => (
-        <OptimizelyExperiment
-            key={experimentId}
-            experimentId={experimentId}
-            experiment={experiments[experimentId]}
-            currentVariation={appliedVariations[experimentId]}
-            projectId={data.projectId}
             onUpdate={onUpdate}
         />
     ));

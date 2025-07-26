@@ -39,14 +39,27 @@
     bottom: calc(100% + 8px);
     left: 50%;
     transform: translateX(-50%);
-    background-color: #1a1a1a;
+    background-color: #24292e;
     color: white;
-    padding: 4px 8px;
-    border-radius: 4px;
-    font-size: 11px;
+    padding: 6px 10px;
+    border-radius: 6px;
+    font-size: 12px;
     white-space: nowrap;
     pointer-events: none;
-    animation: fadeIn 0.2s ease;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    z-index: 1000;
+}
+
+.copy-button:hover .copy-tooltip,
+.copy-tooltip.show {
+    opacity: 1;
+}
+
+.copy-tooltip.success {
+    background-color: #28a745;
+    font-weight: 500;
 }
 
 .copy-tooltip::after {
@@ -55,17 +68,27 @@
     top: 100%;
     left: 50%;
     transform: translateX(-50%);
-    border: 4px solid transparent;
-    border-top-color: #1a1a1a;
+    border: 5px solid transparent;
+    border-top-color: #24292e;
 }
 
-@keyframes fadeIn {
-    from {
-        opacity: 0;
-        transform: translateX(-50%) translateY(-4px);
+.copy-tooltip.success::after {
+    border-top-color: #28a745;
+}
+
+/* Animation for success state */
+@keyframes checkmark {
+    0% {
+        transform: scale(0) rotate(45deg);
     }
-    to {
-        opacity: 1;
-        transform: translateX(-50%) translateY(0);
+    50% {
+        transform: scale(1.2) rotate(45deg);
     }
+    100% {
+        transform: scale(1) rotate(45deg);
+    }
+}
+
+.copy-button.copied svg {
+    animation: checkmark 0.3s ease;
 }

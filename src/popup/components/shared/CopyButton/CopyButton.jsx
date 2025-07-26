@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import './CopyButton.css';
 
-function CopyButton({ text, size = 'small' }) {
+function CopyButton({ text, label = '', tooltipText = '', size = 'small' }) {
     const [copied, setCopied] = useState(false);
+    const [showTooltip, setShowTooltip] = useState(false);
 
     const handleCopy = async (e) => {
         e.stopPropagation();
@@ -10,18 +11,37 @@ function CopyButton({ text, size = 'small' }) {
         try {
             await navigator.clipboard.writeText(text);
             setCopied(true);
+            setShowTooltip(false); // Hide hover tooltip when copying
             setTimeout(() => setCopied(false), 2000);
         } catch (err) {
             console.error('Failed to copy:', err);
         }
     };
 
+    const handleMouseEnter = () => {
+        if (!copied) {
+            setShowTooltip(true);
+        }
+    };
+
+    const handleMouseLeave = () => {
+        setShowTooltip(false);
+    };
+
+    const getTooltipText = () => {
+        if (copied) {
+            return `${label ? `${label} ` : ''}copied!`;
+        }
+        return tooltipText || `Copy ${label || 'to clipboard'}`;
+    };
+
     return (
         <button
             className={`copy-button ${size} ${copied ? 'copied' : ''}`}
             onClick={handleCopy}
-            title={copied ? 'Copied!' : 'Copy to clipboard'}
-            aria-label="Copy to clipboard"
+            onMouseEnter={handleMouseEnter}
+            onMouseLeave={handleMouseLeave}
+            aria-label={getTooltipText()}
         >
             {copied ? (
                 <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
@@ -33,7 +53,11 @@ function CopyButton({ text, size = 'small' }) {
                     <path d="M9 5V3C9 2.44772 8.55228 2 8 2H3C2.44772 2 2 2.44772 2 3V8C2 8.55228 2.44772 9 3 9H5" stroke="currentColor" strokeWidth="1.5"/>
                 </svg>
             )}
-            {copied && <span className="copy-tooltip">Copied!</span>}
+            {(showTooltip || copied) && (
+                <span className={`copy-tooltip ${copied ? 'success' : ''}`}>
+          {getTooltipText()}
+        </span>
+            )}
         </button>
     );
 }

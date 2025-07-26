@@ -1,0 +1,181 @@
+.optimizely-experiments {
+    padding: 8px 0;
+}
+
+/* Activities Summary */
+.activities-summary {
+    margin: 12px 16px;
+    padding: 16px;
+    background: linear-gradient(135deg, #0078d4 0%, #005a9e 100%);
+    color: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0, 120, 212, 0.2);
+}
+
+.summary-content {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.summary-icon {
+    font-size: 28px;
+    line-height: 1;
+}
+
+.summary-text {
+    flex: 1;
+}
+
+.summary-title {
+    font-size: 12px;
+    opacity: 0.9;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.summary-stats {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    margin-top: 4px;
+}
+
+.stat-number {
+    font-size: 24px;
+    font-weight: 700;
+}
+
+.stat-label {
+    font-size: 14px;
+    opacity: 0.9;
+}
+
+.summary-breakdown {
+    display: flex;
+    gap: 16px;
+    padding-top: 12px;
+    border-top: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.breakdown-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.breakdown-icon {
+    font-size: 16px;
+}
+
+.breakdown-count {
+    font-size: 13px;
+    font-weight: 500;
+}
+
+/* Accordion Styles */
+.type-stats {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.active-count {
+    background-color: #d1f5d3;
+    color: #1e7e34;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 500;
+}
+
+/* A/B Tests - Primary style */
+.optimizely-type-experiment .accordion-header {
+    background-color: #e6f3ff;
+    border-color: #0078d4;
+}
+
+.optimizely-type-experiment .accordion-header:hover {
+    background-color: #cce5ff;
+}
+
+.optimizely-type-experiment .experiment-count {
+    background-color: #0078d4;
+    color: white;
+}
+
+/* Personalization - Target style */
+.optimizely-type-personalization .accordion-header {
+    background-color: #fff0f5;
+    border-color: #e91e63;
+}
+
+.optimizely-type-personalization .accordion-header:hover {
+    background-color: #ffe0ec;
+}
+
+.optimizely-type-personalization .experiment-count {
+    background-color: #e91e63;
+    color: white;
+}
+
+/* Feature Tests - Power style */
+.optimizely-type-feature_test .accordion-header {
+    background-color: #fff8e1;
+    border-color: #ff9800;
+}
+
+.optimizely-type-feature_test .accordion-header:hover {
+    background-color: #ffecb3;
+}
+
+.optimizely-type-feature_test .experiment-count {
+    background-color: #ff9800;
+    color: white;
+}
+
+/* Rollouts - Deploy style */
+.optimizely-type-rollout .accordion-header {
+    background-color: #e8f5e9;
+    border-color: #4caf50;
+}
+
+.optimizely-type-rollout .accordion-header:hover {
+    background-color: #c8e6c9;
+}
+
+.optimizely-type-rollout .experiment-count {
+    background-color: #4caf50;
+    color: white;
+}
+
+/* Experiment card enhancements */
+.optimizely-experiments .experiment-card {
+    position: relative;
+    transition: all 0.2s ease;
+}
+
+.optimizely-experiments .experiment-card.inactive {
+    opacity: 0.7;
+}
+
+.optimizely-experiments .experiment-card.inactive:hover {
+    opacity: 1;
+}
+
+.experiment-status-indicator {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background-color: #dc3545;
+}
+
+.experiment-status-indicator.active {
+    background-color: #28a745;
+    animation: pulse 2s ease-in-out infinite;
+}

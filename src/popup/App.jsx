@@ -15,7 +15,17 @@ function App() {
     const [error, setError] = useState(null);
     const [platform, setPlatform] = useState(PLATFORMS.UNKNOWN);
     const [platformData, setPlatformData] = useState(null);
-    const [preferences, setPreferences] = useState({});
+    const [preferences, setPreferences] = useState({
+        autoReload: true,
+        notifications: true,
+        debugMode: false,
+        autoOpenEventTracker: false
+    });
+
+    const showEventTracker = () => {
+        // Show event tracker for supported platforms
+        return [PLATFORMS.OPTIMIZELY, PLATFORMS.VWO, PLATFORMS.ADOBE].includes(platform);
+    };
 
     useEffect(() => {
         loadInitialData();
@@ -129,11 +139,16 @@ function App() {
             {platform === PLATFORMS.UNKNOWN && !error && (
                 <div className="no-platform-message">
                     <p>No A/B testing platform detected on this page.</p>
-                    <p>Supported platforms: Convert, VWO, Optimizely</p>
+                    <p>Supported platforms: Convert, VWO, Optimizely, Adobe Target</p>
                 </div>
             )}
 
-            {platform === PLATFORMS.OPTIMIZELY && <EventTracker />}
+            {showEventTracker() && (
+                <EventTracker
+                    platform={platform}
+                    autoOpen={preferences.autoOpenEventTracker}
+                />
+            )}
         </div>
     );
 }

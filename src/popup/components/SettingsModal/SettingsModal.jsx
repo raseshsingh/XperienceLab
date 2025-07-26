@@ -15,37 +15,60 @@ function SettingsModal({ preferences, onPreferenceChange, onClose }) {
                 </div>
 
                 <div className="modal-body">
-                    <div className="setting-item">
-                        <label className="setting-label">
-                            <input
-                                type="checkbox"
-                                checked={preferences.autoReload}
-                                onChange={(e) => onPreferenceChange('autoReload', e.target.checked)}
-                            />
-                            <span>Auto-reload page after variation change</span>
-                        </label>
+                    <div className="setting-section">
+                        <h3>General Settings</h3>
+
+                        <div className="setting-item">
+                            <label className="setting-label">
+                                <input
+                                    type="checkbox"
+                                    checked={preferences.autoReload}
+                                    onChange={(e) => onPreferenceChange('autoReload', e.target.checked)}
+                                />
+                                <span>Auto-reload page after variation change</span>
+                            </label>
+                        </div>
+
+                        <div className="setting-item">
+                            <label className="setting-label">
+                                <input
+                                    type="checkbox"
+                                    checked={preferences.notifications}
+                                    onChange={(e) => onPreferenceChange('notifications', e.target.checked)}
+                                />
+                                <span>Show notifications</span>
+                            </label>
+                        </div>
+
+                        <div className="setting-item">
+                            <label className="setting-label">
+                                <input
+                                    type="checkbox"
+                                    checked={preferences.debugMode}
+                                    onChange={(e) => onPreferenceChange('debugMode', e.target.checked)}
+                                />
+                                <span>Enable debug mode (console logs)</span>
+                            </label>
+                        </div>
                     </div>
 
-                    <div className="setting-item">
-                        <label className="setting-label">
-                            <input
-                                type="checkbox"
-                                checked={preferences.notifications}
-                                onChange={(e) => onPreferenceChange('notifications', e.target.checked)}
-                            />
-                            <span>Show notifications</span>
-                        </label>
-                    </div>
+                    <div className="setting-section">
+                        <h3>Event Tracker Settings</h3>
 
-                    <div className="setting-item">
-                        <label className="setting-label">
-                            <input
-                                type="checkbox"
-                                checked={preferences.debugMode}
-                                onChange={(e) => onPreferenceChange('debugMode', e.target.checked)}
-                            />
-                            <span>Enable debug mode (console logs)</span>
-                        </label>
+                        <div className="setting-item">
+                            <label className="setting-label">
+                                <input
+                                    type="checkbox"
+                                    checked={preferences.autoOpenEventTracker}
+                                    onChange={(e) => onPreferenceChange('autoOpenEventTracker', e.target.checked)}
+                                />
+                                <span>Auto-open event tracker on page load</span>
+                            </label>
+                            <p className="setting-description">
+                                Automatically opens the event tracker when the extension detects a supported platform.
+                                This helps capture events that fire on page load.
+                            </p>
+                        </div>
                     </div>
                 </div>
 

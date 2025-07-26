@@ -6,13 +6,14 @@
             this.platforms = {
                 convert: this.detectConvert.bind(this),
                 vwo: this.detectVWO.bind(this),
-                optimizely: this.detectOptimizely.bind(this)
+                optimizely: this.detectOptimizely.bind(this),
+                adobe: this.detectAdobeTarget.bind(this)
             };
 
             this.detectionInterval = null;
             this.lastDetectedPlatform = null;
             this.detectionCount = 0;
-            this.maxDetectionAttempts = 30; // Stop after 30 seconds
+            this.maxDetectionAttempts = 30;
 
             console.log('[AB Test Debugger] Detector initialized');
             this.init();
@@ -165,6 +166,396 @@
 
             return null;
         }
+
+        detectAdobeTarget() {
+            console.log('[AB Test Debugger] Checking for Adobe Target...');
+
+            // Check for at.js 2.x
+            if (window.adobe && window.adobe.target) {
+                console.log('[AB Test Debugger] Adobe Target 2.x detected');
+                return this.detectAdobeTargetV2();
+            }
+
+            // Check for at.js 1.x
+            if (window.mbox || window.mboxFactoryDefault || window.mboxCreate) {
+                console.log('[AB Test Debugger] Adobe Target 1.x detected');
+                return this.detectAdobeTargetV1();
+            }
+
+            // Check for Target global settings or other indicators
+            if (window.targetGlobalSettings || window.targetPageParams || window.AT) {
+                console.log('[AB Test Debugger] Adobe Target settings detected');
+                return this.detectAdobeTargetGeneric();
+            }
+
+            console.log('[AB Test Debugger] Adobe Target not found');
+            return null;
+        }
+
+        detectAdobeTargetV2() {
+            try {
+                const targetObj = window.adobe.target;
+                const result = {
+                    isLoaded: true,
+                    version: targetObj.VERSION || '2.x',
+                    atjsVersion: 2,
+                    globalSettings: this.serializeObject(window.targetGlobalSettings || {}),
+                    pageParams: {},
+                    activities: [],
+                    mboxes: [],
+                    offers: []
+                };
+
+                // Get page params
+                if (window.targetPageParams) {
+                    try {
+                        result.pageParams = this.serializeObject(window.targetPageParams() || {});
+                    } catch (e) {
+                        result.pageParams = { error: 'Failed to retrieve page params' };
+                    }
+                }
+
+                // Try to get delivered activities from sessionStorage
+                try {
+                    const sessionKeys = Object.keys(sessionStorage);
+                    sessionKeys.forEach(key => {
+                        if (key.includes('at-') || key.includes('adobe.target')) {
+                            const value = sessionStorage.getItem(key);
+                            try {
+                                const parsed = JSON.parse(value);
+                                if (parsed.activities || parsed.execute || parsed.prefetch) {
+                                    this.extractActivitiesFromResponse(parsed, result);
+                                }
+                            } catch (e) {
+                                // Not JSON, skip
+                            }
+                        }
+                    });
+                } catch (e) {
+                    console.log('[AB Test Debugger] Could not access sessionStorage');
+                }
+
+                // Check cookies for activities
+                this.extractActivitiesFromCookies(result);
+
+                // Detect mboxes on the page
+                this.detectMboxesV2(result);
+
+                // Try to get active offers from data attributes
+                this.detectOffersFromDOM(result);
+
+                console.log('[AB Test Debugger] Adobe Target 2.x data extracted:', result);
+                return result;
+            } catch (error) {
+                console.error('[AB Test Debugger] Adobe Target 2.x detection error:', error);
+                return null;
+            }
+        }
+
+        detectAdobeTargetV1() {
+            try {
+                const result = {
+                    isLoaded: true,
+                    version: '1.x',
+                    atjsVersion: 1,
+                    globalSettings: this.serializeObject(window.targetGlobalSettings || {}),
+                    pageParams: {},
+                    activities: [],
+                    mboxes: [],
+                    offers: []
+                };
+
+                // Get page params
+                if (window.targetPageParams || window.targetPageParamsAll) {
+                    try {
+                        const pageParamsFn = window.targetPageParams || window.targetPageParamsAll;
+                        result.pageParams = this.serializeObject(pageParamsFn() || {});
+                    } catch (e) {
+                        result.pageParams = { error: 'Failed to retrieve page params' };
+                    }
+                }
+
+                // Check mboxFactoryDefault for active mboxes
+                if (window.mboxFactoryDefault) {
+                    try {
+                        const mboxes = window.mboxFactoryDefault.getMboxes();
+                        if (mboxes && mboxes.length) {
+                            mboxes.forEach(mbox => {
+                                if (mbox && mbox.getName) {
+                                    result.mboxes.push({
+                                        name: mbox.getName(),
+                                        id: mbox.getId ? mbox.getId() : null,
+                                        status: 'detected',
+                                        version: 1
+                                    });
+                                }
+                            });
+                        }
+                    } catch (e) {
+                        console.log('[AB Test Debugger] Could not access mboxFactoryDefault');
+                    }
+                }
+
+                // Check for PCId (visitor ID)
+                if (window.mboxFactoryDefault && window.mboxFactoryDefault.getPCId) {
+                    try {
+                        result.visitorId = window.mboxFactoryDefault.getPCId().getId();
+                    } catch (e) {
+                        // Ignore
+                    }
+                }
+
+                // Extract activities from cookies
+                this.extractActivitiesFromCookies(result);
+
+                // Detect mboxes in DOM
+                this.detectMboxesV1(result);
+
+                console.log('[AB Test Debugger] Adobe Target 1.x data extracted:', result);
+                return result;
+            } catch (error) {
+                console.error('[AB Test Debugger] Adobe Target 1.x detection error:', error);
+                return null;
+            }
+        }
+
+        detectAdobeTargetGeneric() {
+            // Fallback detection for edge cases
+            const result = {
+                isLoaded: false,
+                version: 'Unknown',
+                atjsVersion: 0,
+                globalSettings: this.serializeObject(window.targetGlobalSettings || {}),
+                pageParams: {},
+                activities: [],
+                mboxes: [],
+                offers: []
+            };
+
+            if (window.targetPageParams) {
+                try {
+                    result.pageParams = this.serializeObject(window.targetPageParams() || {});
+                } catch (e) {
+                    result.pageParams = { error: 'Failed to retrieve page params' };
+                }
+            }
+
+            this.extractActivitiesFromCookies(result);
+            this.detectMboxesGeneric(result);
+
+            return result;
+        }
+
+        extractActivitiesFromCookies(result) {
+            const cookies = document.cookie.split(';');
+
+            cookies.forEach(cookie => {
+                const [name, value] = cookie.trim().split('=');
+                if (!name || !value) return;
+
+                // Adobe Target cookies patterns
+                if (name.includes('mbox') ||
+                    name.includes('at_') ||
+                    name.includes('adobe.target') ||
+                    name === 'PC' ||
+                    name === 'session' ||
+                    name === 'check') {
+
+                    const activity = {
+                        name: name,
+                        value: decodeURIComponent(value),
+                        type: 'cookie',
+                        isActive: true
+                    };
+
+                    // Try to parse activity details from cookie value
+                    if (name === 'PC' || name === 'mbox') {
+                        activity.visitorId = value;
+                    } else if (name.includes('at_check')) {
+                        activity.type = 'check_cookie';
+                    } else {
+                        // Try to extract campaign/activity info
+                        const parts = value.split('#');
+                        if (parts.length > 1) {
+                            activity.campaignId = parts[0];
+                            activity.experienceId = parts[1];
+                        }
+                    }
+
+                    result.activities.push(activity);
+                }
+            });
+        }
+
+        extractActivitiesFromResponse(response, result) {
+            // Extract from execute section
+            if (response.execute && response.execute.pageLoad) {
+                const pageLoad = response.execute.pageLoad;
+                if (pageLoad.options && pageLoad.options.length > 0) {
+                    pageLoad.options.forEach(option => {
+                        if (option.responseTokens) {
+                            const tokens = option.responseTokens;
+                            result.activities.push({
+                                name: tokens['activity.name'] || 'Unknown Activity',
+                                id: tokens['activity.id'],
+                                experienceId: tokens['experience.id'],
+                                experienceName: tokens['experience.name'],
+                                type: 'pageLoad',
+                                isActive: true,
+                                algorithm: tokens['activity.decisioningMethod'],
+                                tokens: tokens
+                            });
+                        }
+                    });
+                }
+            }
+
+            // Extract from prefetch section
+            if (response.prefetch && response.prefetch.mboxes) {
+                response.prefetch.mboxes.forEach(mbox => {
+                    if (mbox.options && mbox.options.length > 0) {
+                        mbox.options.forEach(option => {
+                            if (option.responseTokens) {
+                                const tokens = option.responseTokens;
+                                result.activities.push({
+                                    name: tokens['activity.name'] || mbox.name,
+                                    id: tokens['activity.id'],
+                                    experienceId: tokens['experience.id'],
+                                    experienceName: tokens['experience.name'],
+                                    mboxName: mbox.name,
+                                    type: 'prefetch',
+                                    isActive: true,
+                                    tokens: tokens
+                                });
+                            }
+                        });
+                    }
+                });
+            }
+        }
+
+        detectMboxesV2(result) {
+            // Look for Target containers in DOM
+            const targetElements = document.querySelectorAll(
+                '[data-at-mbox], [data-mbox-name], .at-element-marker, [class*="at-element"]'
+            );
+
+            targetElements.forEach(element => {
+                const mboxName = element.dataset.atMbox ||
+                    element.dataset.mboxName ||
+                    'target-global-mbox';
+
+                if (!result.mboxes.find(m => m.name === mboxName)) {
+                    result.mboxes.push({
+                        name: mboxName,
+                        selector: this.getSelector(element),
+                        status: 'rendered',
+                        version: 2,
+                        hasContent: element.children.length > 0
+                    });
+                }
+            });
+
+            // Check for global mbox
+            if (!result.mboxes.find(m => m.name === 'target-global-mbox')) {
+                result.mboxes.push({
+                    name: 'target-global-mbox',
+                    selector: 'body',
+                    status: 'detected',
+                    version: 2,
+                    isGlobal: true
+                });
+            }
+        }
+
+        detectMboxesV1(result) {
+            // Look for mbox elements (v1 style)
+            const mboxElements = document.querySelectorAll(
+                '[class*="mbox"], .mboxDefault, [id*="mbox"]'
+            );
+
+            const processedMboxes = new Set();
+
+            mboxElements.forEach(element => {
+                let mboxName = '';
+
+                // Extract mbox name from class or id
+                if (element.className && typeof element.className === 'string') {
+                    const match = element.className.match(/mbox-([^\s]+)/);
+                    if (match) mboxName = match[1];
+                }
+
+                if (!mboxName && element.id) {
+                    const match = element.id.match(/mbox-([^\s]+)/);
+                    if (match) mboxName = match[1];
+                }
+
+                if (mboxName && !processedMboxes.has(mboxName)) {
+                    processedMboxes.add(mboxName);
+                    result.mboxes.push({
+                        name: mboxName,
+                        selector: this.getSelector(element),
+                        status: element.style.visibility !== 'hidden' ? 'visible' : 'hidden',
+                        version: 1,
+                        hasContent: element.children.length > 0
+                    });
+                }
+            });
+
+            // Also check for mboxDefault elements
+            document.querySelectorAll('.mboxDefault').forEach(element => {
+                const parent = element.parentElement;
+                if (parent && parent.className.includes('mbox')) {
+                    const mboxName = parent.className.match(/mbox-([^\s]+)/)?.[1] || 'unknown';
+                    if (!processedMboxes.has(mboxName)) {
+                        processedMboxes.add(mboxName);
+                        result.mboxes.push({
+                            name: mboxName,
+                            selector: this.getSelector(parent),
+                            status: 'default',
+                            version: 1,
+                            hasDefault: true
+                        });
+                    }
+                }
+            });
+        }
+
+        detectMboxesGeneric(result) {
+            // Generic detection for any version
+            this.detectMboxesV1(result);
+            this.detectMboxesV2(result);
+        }
+
+        detectOffersFromDOM(result) {
+            // Look for offers applied to DOM elements
+            const elementsWithOffers = document.querySelectorAll('[data-offer-id], [data-activity-id]');
+
+            elementsWithOffers.forEach(element => {
+                const offer = {
+                    offerId: element.dataset.offerId,
+                    activityId: element.dataset.activityId,
+                    selector: this.getSelector(element),
+                    type: 'dom_offer'
+                };
+
+                if (offer.offerId || offer.activityId) {
+                    result.offers.push(offer);
+                }
+            });
+        }
+
+        getSelector(element) {
+            if (element.id) return `#${element.id}`;
+            if (element.className && typeof element.className === 'string') {
+                const classes = element.className.split(' ')
+                    .filter(c => c && !c.includes('mbox') && !c.includes('at-'))
+                    .slice(0, 2);
+                if (classes.length) return `.${classes.join('.')}`;
+            }
+            return element.tagName.toLowerCase();
+        }
+
 
         detectConvert() {
             if (typeof window.convert !== 'object' || !window.convert.data) {
@@ -357,7 +748,24 @@
                 case 'optimizely':
                     this.updateOptimizelyExperiment(experimentId, variationId);
                     break;
+
+                case 'adobe':
+                    this.updateAdobeTargetExperiment(experimentId, variationId);
+                    break;
             }
+        }
+
+        updateAdobeTargetExperiment(activityId, experienceId) {
+            console.log('[AB Test Debugger] Updating Adobe Target activity:', activityId, experienceId);
+
+            // Adobe Target doesn't have a direct way to force experiences like other platforms
+            // You would typically need to use profile parameters or custom code
+            console.log('[AB Test Debugger] Adobe Target manual experience switching requires profile parameters or custom implementation');
+
+            // Could potentially set a cookie or profile parameter here
+            document.cookie = `mbox_debug=${activityId}:${experienceId}; path=/`;
+
+            setTimeout(() => window.location.reload(), 100);
         }
 
         updateConvertExperiment(experimentId, variationId) {

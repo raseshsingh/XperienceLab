@@ -19,18 +19,43 @@
     transition: all 0.2s ease;
 }
 
-.event-tracker-toggle:hover {
-    background-color: #f6f8fa;
-    border-color: #0366d6;
-    color: #0366d6;
+/* Platform-specific colors */
+.event-tracker-toggle.optimizely:hover {
+    background-color: #e6f3ff;
+    border-color: #0078d4;
+    color: #0078d4;
 }
 
-.event-tracker-toggle.active {
-    background-color: #0366d6;
-    border-color: #0366d6;
+.event-tracker-toggle.optimizely.active {
+    background-color: #0078d4;
+    border-color: #0078d4;
+    color: white;
+}
+
+.event-tracker-toggle.vwo:hover {
+    background-color: #f3f0ff;
+    border-color: #7c3aed;
+    color: #7c3aed;
+}
+
+.event-tracker-toggle.vwo.active {
+    background-color: #7c3aed;
+    border-color: #7c3aed;
+    color: white;
+}
+
+.event-tracker-toggle.adobe:hover {
+    background-color: #fee;
+    border-color: #fa0f00;
+    color: #fa0f00;
+}
+
+.event-tracker-toggle.adobe.active {
+    background-color: #fa0f00;
+    border-color: #fa0f00;
     color: white;
 }
 
 .event-tracker-toggle.active:hover {
-    background-color: #005a9e;
+    opacity: 0.9;
 }

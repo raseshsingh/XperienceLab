@@ -7,14 +7,22 @@ const keepAlive = () => setInterval(chrome.runtime.getPlatformInfo, 20e3);
 chrome.runtime.onStartup.addListener(keepAlive);
 keepAlive();
 
-// Handle installation
+// Handle installation with new default preferences
 chrome.runtime.onInstalled.addListener(async (details) => {
     if (details.reason === 'install') {
         await Storage.set(STORAGE_KEYS.USER_PREFERENCES, {
             autoReload: true,
             notifications: true,
-            debugMode: false
+            debugMode: false,
+            autoOpenEventTracker: false
         });
+    } else if (details.reason === 'update') {
+        // Add new preference to existing users
+        const preferences = await Storage.get(STORAGE_KEYS.USER_PREFERENCES) || {};
+        if (preferences.autoOpenEventTracker === undefined) {
+            preferences.autoOpenEventTracker = false;
+            await Storage.set(STORAGE_KEYS.USER_PREFERENCES, preferences);
+        }
     }
 });
 

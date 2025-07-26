@@ -41,7 +41,12 @@
   ],
   "web_accessible_resources": [
     {
-      "resources": ["injected.js", "event-tracker.js"],
+      "resources": [
+        "injected.js",
+        "event-tracker.js",
+        "vwo-event-tracker.js",
+        "adobe-target-event-tracker.js"
+      ],
       "matches": ["<all_urls>"]
     }
   ]

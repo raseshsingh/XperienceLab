@@ -2,6 +2,7 @@ export const PLATFORMS = {
     CONVERT: 'convert',
     VWO: 'vwo',
     OPTIMIZELY: 'optimizely',
+    ADOBE: 'adobe',
     UNKNOWN: 'unknown'
 };
 
@@ -24,5 +25,6 @@ export const STORAGE_KEYS = {
 export const PLATFORM_LOGOS = {
     [PLATFORMS.CONVERT]: 'https://i.ibb.co/6P5jHJ7/convert.png',
     [PLATFORMS.VWO]: 'https://i.ibb.co/sJHz2JD/VWO.jpg',
-    [PLATFORMS.OPTIMIZELY]: 'https://i.ibb.co/SdqT8pd/optimizely.png'
+    [PLATFORMS.OPTIMIZELY]: 'https://i.ibb.co/SdqT8pd/optimizely.png',
+    [PLATFORMS.ADOBE]: 'https://i.ibb.co/7K5qXvJ/adobe-target.png'
 };

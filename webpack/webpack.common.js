@@ -9,6 +9,8 @@ module.exports = {
         content: path.resolve(__dirname, '../src/content/content.js'),
         injected: path.resolve(__dirname, '../src/injected/detector.js'),
         'event-tracker': path.resolve(__dirname, '../src/injected/event-tracker.js'),
+        'vwo-event-tracker': path.resolve(__dirname, '../src/injected/vwo-event-tracker.js'),
+        'adobe-target-event-tracker': path.resolve(__dirname, '../src/injected/adobe-target-event-tracker.js'),
         background: path.resolve(__dirname, '../src/background/service-worker.js'),
     },
     output: {

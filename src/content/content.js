@@ -4,7 +4,11 @@ import { MESSAGES } from '../utils/constants.js';
 class ContentScript {
     constructor() {
         this.injectedScriptLoaded = false;
-        this.eventTrackerLoaded = false;
+        this.trackersLoaded = {
+            optimizely: false,
+            vwo: false,
+            adobe: false
+        };
         this.platformData = null;
         this.injectionAttempts = 0;
         this.maxInjectionAttempts = 3;
@@ -59,18 +63,39 @@ class ContentScript {
         }
     }
 
-    injectEventTracker() {
-        if (this.eventTrackerLoaded) return;
+    injectEventTracker(platform) {
+        if (this.trackersLoaded[platform]) return;
 
-        console.log('[AB Test Debugger Content] Injecting event tracker script');
+        console.log(`[AB Test Debugger Content] Injecting ${platform} event tracker`);
 
         const script = document.createElement('script');
-        script.src = chrome.runtime.getURL('event-tracker.js');
+        let fileName = '';
+
+        switch (platform) {
+            case 'optimizely':
+                fileName = 'event-tracker.js';
+                break;
+            case 'vwo':
+                fileName = 'vwo-event-tracker.js';
+                break;
+            case 'adobe':
+                fileName = 'adobe-target-event-tracker.js';
+                break;
+            default:
+                console.error(`[AB Test Debugger Content] Unknown platform: ${platform}`);
+                return;
+        }
+
+        script.src = chrome.runtime.getURL(fileName);
 
         script.onload = () => {
-            console.log('[AB Test Debugger Content] Event tracker loaded successfully');
-            this.eventTrackerLoaded = true;
+            console.log(`[AB Test Debugger Content] ${platform} event tracker loaded successfully`);
+            this.trackersLoaded[platform] = true;
             script.remove();
+        };
+
+        script.onerror = () => {
+            console.error(`[AB Test Debugger Content] Failed to load ${platform} event tracker`);
         };
 
         (document.head || document.documentElement).appendChild(script);
@@ -116,10 +141,13 @@ class ContentScript {
                 } else if (event.data.action === 'PLATFORM_DETECTED' || event.data.action === 'PLATFORM_DATA') {
                     this.platformData = event.data.payload;
                     console.log('[AB Test Debugger Content] Platform data updated:', this.platformData);
-                } else if (event.data.action === 'EVENT_TRACKING_STOPPED') {
+                } else if (event.data.action === 'EVENT_TRACKING_STOPPED' ||
+                    event.data.action === 'VWO_EVENT_TRACKING_STOPPED' ||
+                    event.data.action === 'ADOBE_EVENT_TRACKING_STOPPED') {
                     // Notify popup that tracking was stopped
                     MessageBus.sendToBackground({
-                        type: MESSAGES.EVENT_TRACKING_STOPPED
+                        type: MESSAGES.EVENT_TRACKING_STOPPED,
+                        platform: event.data.action.replace('_EVENT_TRACKING_STOPPED', '').toLowerCase()
                     });
                 }
             }
@@ -168,15 +196,28 @@ class ContentScript {
     toggleEventTracking(data) {
         console.log('[AB Test Debugger Content] Toggling event tracking:', data);
 
-        // Inject event tracker if not already loaded
-        if (!this.eventTrackerLoaded && data.enabled) {
-            this.injectEventTracker();
+        // Inject appropriate event tracker if not already loaded
+        if (!this.trackersLoaded[data.platform] && data.enabled) {
+            this.injectEventTracker(data.platform);
         }
 
-        // Send message to event tracker
+        // Send message to appropriate event tracker
         setTimeout(() => {
+            let source = '';
+            switch (data.platform) {
+                case 'optimizely':
+                    source = 'ab-test-event-tracker';
+                    break;
+                case 'vwo':
+                    source = 'ab-test-vwo-tracker';
+                    break;
+                case 'adobe':
+                    source = 'ab-test-adobe-tracker';
+                    break;
+            }
+
             window.postMessage({
-                source: 'ab-test-event-tracker',
+                source,
                 action: 'TOGGLE_TRACKING',
                 enabled: data.enabled
             }, '*');

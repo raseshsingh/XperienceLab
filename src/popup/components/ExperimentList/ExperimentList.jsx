@@ -3,6 +3,7 @@ import { PLATFORMS } from '../../../utils/constants';
 import ConvertExperiment from './ConvertExperiment';
 import VWOExperiments from './VWOExperiments';
 import OptimizelyExperiments from './OptimizelyExperiments';
+import AdobeTargetExperiments from './AdobeTargetExperiments';
 import './ExperimentList.css';
 
 function ExperimentList({ platform, data, onExperimentUpdate }) {
@@ -20,6 +21,9 @@ function ExperimentList({ platform, data, onExperimentUpdate }) {
 
             case PLATFORMS.OPTIMIZELY:
                 return <OptimizelyExperiments data={data} onUpdate={onExperimentUpdate} />;
+
+            case PLATFORMS.ADOBE:
+                return <AdobeTargetExperiments data={data} onUpdate={onExperimentUpdate} />;
 
             default:
                 return null;

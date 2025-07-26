@@ -9,6 +9,7 @@
             this.floatingWindow = null;
             this.originalOptimizelyPush = null;
             this.notificationListeners = [];
+            this.isIntercepting = false; // Flag to prevent double interception
 
             console.log('[Optimizely Event Tracker] Initialized');
             this.init();
@@ -74,34 +75,58 @@
             console.log('[Optimizely Event Tracker] Stopping event tracking...');
 
             // Restore original push method
-            if (this.originalOptimizelyPush && window.optimizely) {
-                window.optimizely.push = this.originalOptimizelyPush;
-                this.originalOptimizelyPush = null;
-            }
+            this.restoreOptimizelyPush();
 
             // Remove notification listeners
             this.notificationListeners.forEach(id => {
-                window.optimizely?.notificationCenter?.removeNotificationListener?.(id);
+                try {
+                    window.optimizely?.notificationCenter?.removeNotificationListener?.(id);
+                } catch (e) {
+                    console.error('[Optimizely Event Tracker] Error removing listener:', e);
+                }
             });
             this.notificationListeners = [];
         }
 
         interceptOptimizelyPush() {
-            if (!window.optimizely || !window.optimizely.push) return;
+            if (!window.optimizely || !window.optimizely.push || this.isIntercepting) {
+                return;
+            }
 
-            this.originalOptimizelyPush = window.optimizely.push.bind(window.optimizely);
+            // Store the original push method only if we haven't already
+            if (!this.originalOptimizelyPush) {
+                this.originalOptimizelyPush = window.optimizely.push;
+            }
 
-            window.optimizely.push = (...args) => {
-                // Process each argument
+            // Mark that we're intercepting
+            this.isIntercepting = true;
+
+            // Create our interceptor function
+            const tracker = this;
+            window.optimizely.push = function(...args) {
+                // Process each argument for tracking
                 args.forEach(command => {
                     if (command && typeof command === 'object') {
-                        this.trackOptimizelyCommand(command);
+                        tracker.trackOptimizelyCommand(command);
+                    } else if (typeof command === 'string') {
+                        // Handle string commands
+                        tracker.trackOptimizelyCommand({ type: 'raw', value: command });
                     }
                 });
 
-                // Call original method
-                return this.originalOptimizelyPush(...args);
+                // Call the original method with proper context
+                return tracker.originalOptimizelyPush.apply(window.optimizely, args);
             };
+
+            console.log('[Optimizely Event Tracker] Push method intercepted');
+        }
+
+        restoreOptimizelyPush() {
+            if (this.originalOptimizelyPush && window.optimizely && this.isIntercepting) {
+                window.optimizely.push = this.originalOptimizelyPush;
+                this.isIntercepting = false;
+                console.log('[Optimizely Event Tracker] Push method restored');
+            }
         }
 
         trackOptimizelyCommand(command) {
@@ -110,6 +135,15 @@
                 category: 'API Call',
                 raw: command
             };
+
+            // Handle string commands
+            if (command.type === 'raw') {
+                eventData.type = 'raw';
+                eventData.name = 'Raw Command';
+                eventData.details = { command: command.value };
+                this.addEvent(eventData);
+                return;
+            }
 
             switch (command.type) {
                 case 'page':
@@ -175,7 +209,7 @@
 
                 default:
                     eventData.type = command.type || 'unknown';
-                    eventData.name = `Unknown Command: ${command.type}`;
+                    eventData.name = `Unknown Command: ${command.type || 'undefined'}`;
                     eventData.details = command;
             }
 
@@ -184,7 +218,10 @@
 
         setupNotificationListeners() {
             const notificationCenter = window.optimizely?.notificationCenter;
-            if (!notificationCenter) return;
+            if (!notificationCenter || !notificationCenter.addNotificationListener) {
+                console.log('[Optimizely Event Tracker] Notification center not available');
+                return;
+            }
 
             // Listen for various Optimizely events
             const eventTypes = [
@@ -209,7 +246,7 @@
                         this.notificationListeners.push(listenerId);
                     }
                 } catch (e) {
-                    console.log(`[Optimizely Event Tracker] Could not listen to ${eventType}`);
+                    console.log(`[Optimizely Event Tracker] Could not listen to ${eventType}:`, e.message);
                 }
             });
         }
@@ -223,49 +260,83 @@
                 details: {}
             };
 
-            switch (eventType) {
-                case 'OPTIMIZELY:ACTIVATED':
-                    eventData.details = {
-                        experiment: notification.experiment,
-                        variation: notification.variation,
-                        userId: notification.userId
-                    };
-                    break;
+            try {
+                switch (eventType) {
+                    case 'OPTIMIZELY:ACTIVATED':
+                        eventData.details = {
+                            experiment: notification.experiment,
+                            variation: notification.variation,
+                            userId: notification.userId
+                        };
+                        break;
 
-                case 'OPTIMIZELY:DECISION':
-                    eventData.details = {
-                        type: notification.type,
-                        userId: notification.userId,
-                        attributes: notification.attributes,
-                        decisionInfo: notification.decisionInfo
-                    };
-                    break;
+                    case 'OPTIMIZELY:DECISION':
+                        eventData.details = {
+                            type: notification.type,
+                            userId: notification.userId,
+                            attributes: notification.attributes,
+                            decisionInfo: notification.decisionInfo
+                        };
+                        break;
 
-                case 'OPTIMIZELY:EVENT':
-                    eventData.details = {
-                        eventKey: notification.eventKey,
-                        userId: notification.userId,
-                        attributes: notification.attributes,
-                        eventTags: notification.eventTags,
-                        logEvent: notification.logEvent
-                    };
-                    break;
+                    case 'OPTIMIZELY:EVENT':
+                        eventData.details = {
+                            eventKey: notification.eventKey,
+                            userId: notification.userId,
+                            attributes: notification.attributes,
+                            eventTags: notification.eventTags,
+                            logEvent: notification.logEvent
+                        };
+                        break;
 
-                case 'OPTIMIZELY:TRACK':
-                    eventData.details = {
-                        eventKey: notification.eventKey,
-                        userId: notification.userId,
-                        revenue: notification.revenue,
-                        value: notification.value,
-                        eventTags: notification.eventTags
-                    };
-                    break;
+                    case 'OPTIMIZELY:TRACK':
+                        eventData.details = {
+                            eventKey: notification.eventKey,
+                            userId: notification.userId,
+                            revenue: notification.revenue,
+                            value: notification.value,
+                            eventTags: notification.eventTags
+                        };
+                        break;
 
-                default:
-                    eventData.details = notification;
+                    default:
+                        eventData.details = this.sanitizeObject(notification);
+                }
+            } catch (e) {
+                eventData.details = { error: 'Failed to process notification data' };
             }
 
             this.addEvent(eventData);
+        }
+
+        // Sanitize objects to prevent circular references
+        sanitizeObject(obj, depth = 0, maxDepth = 3) {
+            if (depth > maxDepth) return '[Max depth reached]';
+            if (obj === null || obj === undefined) return obj;
+            if (typeof obj !== 'object') return obj;
+
+            if (Array.isArray(obj)) {
+                return obj.map(item => this.sanitizeObject(item, depth + 1, maxDepth));
+            }
+
+            const sanitized = {};
+            for (const key in obj) {
+                try {
+                    if (obj.hasOwnProperty(key)) {
+                        const value = obj[key];
+                        if (typeof value === 'function') {
+                            sanitized[key] = '[Function]';
+                        } else if (typeof value === 'object' && value !== null) {
+                            sanitized[key] = this.sanitizeObject(value, depth + 1, maxDepth);
+                        } else {
+                            sanitized[key] = value;
+                        }
+                    }
+                } catch (e) {
+                    sanitized[key] = '[Error accessing property]';
+                }
+            }
+            return sanitized;
         }
 
         trackInitialState() {
@@ -279,7 +350,7 @@
                     const variationMap = state.getVariationMap() || {};
 
                     activeExperiments.forEach(expId => {
-                        const experiment = data.experiments[expId];
+                        const experiment = data.experiments?.[expId];
                         if (experiment) {
                             this.addEvent({
                                 timestamp: new Date().toLocaleTimeString(),
@@ -297,7 +368,7 @@
                     });
 
                     // Track active pages
-                    const activePages = state.getActivePageIds() || [];
+                    const activePages = state.getActivePageIds?.() || [];
                     activePages.forEach(pageId => {
                         const page = data.pages?.[pageId];
                         if (page) {
@@ -353,6 +424,12 @@
         }
 
         createFloatingWindow() {
+            // Check if window already exists
+            if (document.getElementById('optimizely-event-tracker-window')) {
+                this.floatingWindow = document.getElementById('optimizely-event-tracker-window');
+                return;
+            }
+
             // Create container
             const container = document.createElement('div');
             container.id = 'optimizely-event-tracker-window';
@@ -402,6 +479,8 @@
             // Add event listeners
             header.querySelector('.opt-event-tracker-close').addEventListener('click', () => {
                 this.hideFloatingWindow();
+                this.isTracking = false;
+                this.stopTracking();
                 window.postMessage({
                     source: 'ab-test-detector',
                     action: 'EVENT_TRACKING_STOPPED'
@@ -492,7 +571,7 @@
                 if (value === undefined || value === null) return;
 
                 if (key === 'tags' || key === 'eventTags' || key === 'attributes') {
-                    if (Object.keys(value).length > 0) {
+                    if (value && typeof value === 'object' && Object.keys(value).length > 0) {
                         detailsHtml += `
               <div class="opt-detail-row">
                 <span class="opt-detail-key">${key}:</span>
@@ -538,239 +617,242 @@
     if (!window.__optimizelyEventTracker) {
         window.__optimizelyEventTracker = new OptimizelyEventTracker();
 
-        // Add styles
-        const style = document.createElement('style');
-        style.textContent = `
-      .opt-event-tracker-window {
-        position: fixed;
-        bottom: 20px;
-        right: 20px;
-        width: 420px;
-        max-height: 600px;
-        background: white;
-        border-radius: 12px;
-        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
-        z-index: 999999;
-        display: flex;
-        flex-direction: column;
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-        transition: opacity 0.3s ease, transform 0.3s ease;
-      }
-      
-      .opt-event-tracker-window.hidden {
-        opacity: 0;
-        transform: translateY(20px);
-        pointer-events: none;
-      }
-      
-      .opt-event-tracker-window.dragging {
-        cursor: move;
-        opacity: 0.95;
-      }
-      
-      .opt-event-tracker-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 16px 20px;
-        background: linear-gradient(135deg, #0078d4 0%, #005a9e 100%);
-        color: white;
-        border-radius: 12px 12px 0 0;
-        cursor: move;
-        user-select: none;
-      }
-      
-      .opt-event-tracker-title {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        font-weight: 600;
-        font-size: 15px;
-      }
-      
-      .opt-event-tracker-close {
-        background: none;
-        border: none;
-        color: white;
-        font-size: 28px;
-        cursor: pointer;
-        padding: 0;
-        width: 32px;
-        height: 32px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        border-radius: 6px;
-        transition: background-color 0.2s ease;
-        line-height: 1;
-      }
-      
-      .opt-event-tracker-close:hover {
-        background-color: rgba(255, 255, 255, 0.2);
-      }
-      
-      .opt-event-tracker-content {
-        flex: 1;
-        overflow-y: auto;
-        background: #f8f9fa;
-      }
-      
-      .opt-event-tracker-list {
-        padding: 12px;
-      }
-      
-      .opt-event-item {
-        background: white;
-        border: 1px solid #e1e4e8;
-        border-radius: 8px;
-        padding: 14px;
-        margin-bottom: 10px;
-        transition: all 0.2s ease;
-      }
-      
-      .opt-event-item:hover {
-        transform: translateX(-2px);
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-        border-color: #0078d4;
-      }
-      
-      .opt-event-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 8px;
-      }
-      
-      .opt-event-time {
-        color: #666;
-        font-size: 12px;
-        font-family: 'SF Mono', Monaco, 'Courier New', monospace;
-      }
-      
-      .opt-event-category {
-        padding: 3px 10px;
-        border-radius: 12px;
-        font-size: 11px;
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-      }
-      
-      .opt-event-category.api-call {
-        background-color: #e3f2fd;
-        color: #1976d2;
-      }
-      
-      .opt-event-category.notification {
-        background-color: #f3e5f5;
-        color: #7b1fa2;
-      }
-      
-      .opt-event-category.initial-state {
-        background-color: #e8f5e9;
-        color: #388e3c;
-      }
-      
-      .opt-event-category.system {
-        background-color: #ffebee;
-        color: #c62828;
-      }
-      
-      .opt-event-name {
-        font-weight: 600;
-        color: #1a1a1a;
-        margin-bottom: 8px;
-        font-size: 14px;
-      }
-      
-      .opt-event-details {
-        margin-top: 10px;
-        padding-top: 10px;
-        border-top: 1px solid #f0f0f0;
-      }
-      
-      .opt-detail-row {
-        display: flex;
-        align-items: flex-start;
-        margin-bottom: 6px;
-        font-size: 12px;
-      }
-      
-      .opt-detail-key {
-        color: #666;
-        margin-right: 8px;
-        min-width: 80px;
-        font-weight: 500;
-      }
-      
-      .opt-detail-value {
-        color: #1a1a1a;
-        flex: 1;
-        word-break: break-word;
-        font-family: 'SF Mono', Monaco, 'Courier New', monospace;
-        white-space: pre-wrap;
-      }
-      
-      /* Event type specific colors */
-      .opt-event-item.page .opt-event-name {
-        color: #1976d2;
-      }
-      
-      .opt-event-item.event .opt-event-name {
-        color: #388e3c;
-      }
-      
-      .opt-event-item.bucket .opt-event-name {
-        color: #f57c00;
-      }
-      
-      .opt-event-item.activate .opt-event-name {
-        color: #7b1fa2;
-      }
-      
-      .opt-event-tracker-footer {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 14px 20px;
-        border-top: 1px solid #e1e4e8;
-        background: white;
-        border-radius: 0 0 12px 12px;
-      }
-      
-      .opt-event-tracker-count {
-        font-size: 13px;
-        color: #666;
-        font-weight: 500;
-      }
-      
-      .opt-event-tracker-clear {
-        padding: 8px 16px;
-        background-color: #dc3545;
-        color: white;
-        border: none;
-        border-radius: 6px;
-        font-size: 13px;
-        font-weight: 500;
-        cursor: pointer;
-        transition: background-color 0.2s ease;
-      }
-      
-      .opt-event-tracker-clear:hover {
-        background-color: #c82333;
-      }
-      
-      /* Empty state */
-      .opt-event-tracker-list:empty::after {
-        content: "No events captured yet. Interact with the page to see Optimizely events.";
-        display: block;
-        text-align: center;
-        padding: 40px 20px;
-        color: #999;
-        font-size: 13px;
-        font-style: italic;
-      }
-    `;
-        document.head.appendChild(style);
+        // Add styles (same as before)
+        if (!document.getElementById('optimizely-event-tracker-styles')) {
+            const style = document.createElement('style');
+            style.id = 'optimizely-event-tracker-styles';
+            style.textContent = `
+        .opt-event-tracker-window {
+          position: fixed;
+          bottom: 20px;
+          right: 20px;
+          width: 420px;
+          max-height: 600px;
+          background: white;
+          border-radius: 12px;
+          box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+          z-index: 999999;
+          display: flex;
+          flex-direction: column;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          transition: opacity 0.3s ease, transform 0.3s ease;
+        }
+        
+        .opt-event-tracker-window.hidden {
+          opacity: 0;
+          transform: translateY(20px);
+          pointer-events: none;
+        }
+        
+        .opt-event-tracker-window.dragging {
+          cursor: move;
+          opacity: 0.95;
+        }
+        
+        .opt-event-tracker-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 16px 20px;
+          background: linear-gradient(135deg, #0078d4 0%, #005a9e 100%);
+          color: white;
+          border-radius: 12px 12px 0 0;
+          cursor: move;
+          user-select: none;
+        }
+        
+        .opt-event-tracker-title {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          font-weight: 600;
+          font-size: 15px;
+        }
+        
+        .opt-event-tracker-close {
+          background: none;
+          border: none;
+          color: white;
+          font-size: 28px;
+          cursor: pointer;
+          padding: 0;
+          width: 32px;
+          height: 32px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: 6px;
+          transition: background-color 0.2s ease;
+          line-height: 1;
+        }
+        
+        .opt-event-tracker-close:hover {
+          background-color: rgba(255, 255, 255, 0.2);
+        }
+        
+        .opt-event-tracker-content {
+          flex: 1;
+          overflow-y: auto;
+          background: #f8f9fa;
+        }
+        
+        .opt-event-tracker-list {
+          padding: 12px;
+        }
+        
+        .opt-event-item {
+          background: white;
+          border: 1px solid #e1e4e8;
+          border-radius: 8px;
+          padding: 14px;
+          margin-bottom: 10px;
+          transition: all 0.2s ease;
+        }
+        
+        .opt-event-item:hover {
+          transform: translateX(-2px);
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+          border-color: #0078d4;
+        }
+        
+        .opt-event-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 8px;
+        }
+        
+        .opt-event-time {
+          color: #666;
+          font-size: 12px;
+          font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+        }
+        
+        .opt-event-category {
+          padding: 3px 10px;
+          border-radius: 12px;
+          font-size: 11px;
+          font-weight: 600;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+        }
+        
+        .opt-event-category.api-call {
+          background-color: #e3f2fd;
+          color: #1976d2;
+        }
+        
+        .opt-event-category.notification {
+          background-color: #f3e5f5;
+          color: #7b1fa2;
+        }
+        
+        .opt-event-category.initial-state {
+          background-color: #e8f5e9;
+          color: #388e3c;
+        }
+        
+        .opt-event-category.system {
+          background-color: #ffebee;
+          color: #c62828;
+        }
+        
+        .opt-event-name {
+          font-weight: 600;
+          color: #1a1a1a;
+          margin-bottom: 8px;
+          font-size: 14px;
+        }
+        
+        .opt-event-details {
+          margin-top: 10px;
+          padding-top: 10px;
+          border-top: 1px solid #f0f0f0;
+        }
+        
+        .opt-detail-row {
+          display: flex;
+          align-items: flex-start;
+          margin-bottom: 6px;
+          font-size: 12px;
+        }
+        
+        .opt-detail-key {
+          color: #666;
+          margin-right: 8px;
+          min-width: 80px;
+          font-weight: 500;
+        }
+        
+        .opt-detail-value {
+          color: #1a1a1a;
+          flex: 1;
+          word-break: break-word;
+          font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+          white-space: pre-wrap;
+        }
+        
+        /* Event type specific colors */
+        .opt-event-item.page .opt-event-name {
+          color: #1976d2;
+        }
+        
+        .opt-event-item.event .opt-event-name {
+          color: #388e3c;
+        }
+        
+        .opt-event-item.bucket .opt-event-name {
+          color: #f57c00;
+        }
+        
+        .opt-event-item.activate .opt-event-name {
+          color: #7b1fa2;
+        }
+        
+        .opt-event-tracker-footer {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 14px 20px;
+          border-top: 1px solid #e1e4e8;
+          background: white;
+          border-radius: 0 0 12px 12px;
+        }
+        
+        .opt-event-tracker-count {
+          font-size: 13px;
+          color: #666;
+          font-weight: 500;
+        }
+        
+        .opt-event-tracker-clear {
+          padding: 8px 16px;
+          background-color: #dc3545;
+          color: white;
+          border: none;
+          border-radius: 6px;
+          font-size: 13px;
+          font-weight: 500;
+          cursor: pointer;
+          transition: background-color 0.2s ease;
+        }
+        
+        .opt-event-tracker-clear:hover {
+          background-color: #c82333;
+        }
+        
+        /* Empty state */
+        .opt-event-tracker-list:empty::after {
+          content: "No events captured yet. Interact with the page to see Optimizely events.";
+          display: block;
+          text-align: center;
+          padding: 40px 20px;
+          color: #999;
+          font-size: 13px;
+          font-style: italic;
+        }
+      `;
+            document.head.appendChild(style);
+        }
     }
 })();

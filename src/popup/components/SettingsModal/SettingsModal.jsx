@@ -65,8 +65,9 @@ function SettingsModal({ preferences, onPreferenceChange, onClose }) {
                                 <span>Auto-open event tracker on page load</span>
                             </label>
                             <p className="setting-description">
-                                Automatically opens the event tracker when the extension detects a supported platform.
-                                This helps capture events that fire on page load.
+                                Automatically opens the event tracker when visiting a page with a supported A/B testing platform
+                                (Optimizely, VWO, or Adobe Target). The tracker will start capturing events immediately without
+                                needing to open the extension popup.
                             </p>
                         </div>
                     </div>

@@ -43,6 +43,7 @@
     {
       "resources": [
         "injected.js",
+        "base-event-tracker.js",
         "event-tracker.js",
         "vwo-event-tracker.js",
         "adobe-target-event-tracker.js"

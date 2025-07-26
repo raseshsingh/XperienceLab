@@ -14,8 +14,12 @@
             this.lastDetectedPlatform = null;
             this.detectionCount = 0;
             this.maxDetectionAttempts = 30;
+            this.adobeTargetData = null;
 
             console.log('[AB Test Debugger] Detector initialized');
+
+            // Set up interceptors immediately
+            this.setupNetworkInterceptors();
             this.init();
         }
 
@@ -120,114 +124,180 @@
             return { platform: 'unknown', data: null };
         }
 
-        // Safely serialize object, removing functions and non-serializable values
-        serializeObject(obj, maxDepth = 5, currentDepth = 0) {
-            if (currentDepth >= maxDepth) return null;
-            if (obj === null || obj === undefined) return null;
+        setupNetworkInterceptors() {
+            console.log('[AB Test Debugger] Setting up network interceptors for Adobe Target');
 
-            const type = typeof obj;
+            // Intercept XHR requests
+            if (window.XMLHttpRequest) {
+                const oldXHROpen = window.XMLHttpRequest.prototype.open;
+                const self = this;
 
-            // Handle primitive types
-            if (type === 'string' || type === 'number' || type === 'boolean') {
-                return obj;
-            }
-
-            // Skip functions, symbols, and other non-serializable types
-            if (type === 'function' || type === 'symbol') {
-                return null;
-            }
-
-            // Handle arrays
-            if (Array.isArray(obj)) {
-                return obj.map(item => this.serializeObject(item, maxDepth, currentDepth + 1))
-                    .filter(item => item !== null);
-            }
-
-            // Handle objects
-            if (type === 'object') {
-                const serialized = {};
-
-                try {
-                    for (const key in obj) {
-                        if (obj.hasOwnProperty(key)) {
-                            const value = obj[key];
-                            const serializedValue = this.serializeObject(value, maxDepth, currentDepth + 1);
-                            if (serializedValue !== null) {
-                                serialized[key] = serializedValue;
+                window.XMLHttpRequest.prototype.open = function() {
+                    this.addEventListener('load', function() {
+                        if (self.isAdobeTargetURL(this.responseURL)) {
+                            try {
+                                const responseBody = JSON.parse(this.responseText);
+                                console.log('[AB Test Debugger] Adobe Target XHR response captured:', responseBody);
+                                self.processAdobeTargetResponse(responseBody, this.responseURL);
+                            } catch (e) {
+                                console.error('[AB Test Debugger] Error parsing Adobe Target response:', e);
                             }
                         }
-                    }
-                } catch (e) {
-                    console.warn('[AB Test Debugger] Error serializing object:', e);
-                }
+                    });
 
-                return serialized;
+                    return oldXHROpen.apply(this, arguments);
+                };
             }
 
-            return null;
+            // Intercept fetch requests
+            if (window.fetch) {
+                const originalFetch = window.fetch;
+                const self = this;
+
+                window.fetch = function(...args) {
+                    const promise = originalFetch.apply(this, args);
+
+                    promise.then(response => {
+                        if (self.isAdobeTargetURL(response.url)) {
+                            response.clone().json().then(data => {
+                                console.log('[AB Test Debugger] Adobe Target fetch response captured:', data);
+                                self.processAdobeTargetResponse(data, response.url);
+                            }).catch(e => {
+                                console.error('[AB Test Debugger] Error parsing Adobe Target response:', e);
+                            });
+                        }
+                    }).catch(e => {
+                        // Ignore fetch errors
+                    });
+
+                    return promise;
+                };
+            }
         }
 
         detectAdobeTarget() {
             console.log('[AB Test Debugger] Checking for Adobe Target...');
 
-            // Check for at.js 2.x
-            if (window.adobe && window.adobe.target) {
-                console.log('[AB Test Debugger] Adobe Target 2.x detected');
-                return this.detectAdobeTargetV2();
+            // Check multiple indicators for Adobe Target
+            const targetIndicators = [
+                // at.js 2.x
+                window.adobe && window.adobe.target,
+                window.adobe && window.adobe.target && window.adobe.target.getOffer,
+                window.adobe && window.adobe.target && window.adobe.target.getOffers,
+
+                // at.js 1.x
+                window.mbox,
+                window.mboxCreate,
+                window.mboxDefine,
+                window.mboxUpdate,
+                window.mboxFactoryDefault,
+
+                // Global settings
+                window.targetGlobalSettings,
+                window.targetPageParams,
+                window.targetPageParamsAll,
+
+                // Other indicators
+                window.AT,
+                window._AT,
+                document.querySelector('script[src*="at.js"]'),
+                document.querySelector('script[src*="target.js"]'),
+                document.querySelector('script[src*=".tt.omtrdc.net"]'),
+
+                // Check for Target cookies
+                document.cookie.includes('mbox'),
+                document.cookie.includes('at_check'),
+                document.cookie.includes('PC#'),
+
+                // Check sessionStorage
+                (() => {
+                    try {
+                        const keys = Object.keys(sessionStorage);
+                        return keys.some(key => key.includes('at-') || key.includes('adobe.target'));
+                    } catch (e) {
+                        return false;
+                    }
+                })()
+            ];
+
+            const isTargetPresent = targetIndicators.some(indicator => !!indicator);
+
+            if (!isTargetPresent && !this.adobeTargetData) {
+                console.log('[AB Test Debugger] Adobe Target not found - checked all indicators');
+                return null;
             }
 
-            // Check for at.js 1.x
-            if (window.mbox || window.mboxFactoryDefault || window.mboxCreate) {
-                console.log('[AB Test Debugger] Adobe Target 1.x detected');
-                return this.detectAdobeTargetV1();
-            }
+            console.log('[AB Test Debugger] Adobe Target indicators found, building data...');
 
-            // Check for Target global settings or other indicators
-            if (window.targetGlobalSettings || window.targetPageParams || window.AT) {
-                console.log('[AB Test Debugger] Adobe Target settings detected');
-                return this.detectAdobeTargetGeneric();
-            }
-
-            console.log('[AB Test Debugger] Adobe Target not found');
-            return null;
-        }
-
-        detectAdobeTargetV2() {
             try {
-                const targetObj = window.adobe.target;
                 const result = {
                     isLoaded: true,
-                    version: targetObj.VERSION || '2.x',
-                    atjsVersion: 2,
-                    globalSettings: this.serializeObject(window.targetGlobalSettings || {}),
+                    version: 'Unknown',
+                    atjsVersion: null,
+                    globalSettings: {},
                     pageParams: {},
                     activities: [],
                     mboxes: [],
-                    offers: []
+                    offers: [],
+                    clientCode: null
                 };
+
+                // Detect version
+                if (window.adobe && window.adobe.target && window.adobe.target.VERSION) {
+                    result.version = window.adobe.target.VERSION;
+                    result.atjsVersion = result.version.startsWith('2') ? 2 : 1;
+                    console.log('[AB Test Debugger] Detected at.js version:', result.version);
+                } else if (window.mbox || window.mboxFactoryDefault) {
+                    result.version = '1.x';
+                    result.atjsVersion = 1;
+                    console.log('[AB Test Debugger] Detected at.js 1.x (legacy)');
+                } else if (this.adobeTargetData && this.adobeTargetData.version) {
+                    result.version = this.adobeTargetData.version;
+                    result.atjsVersion = result.version.startsWith('2') ? 2 : 1;
+                }
+
+                // Get global settings
+                if (window.targetGlobalSettings) {
+                    result.globalSettings = this.serializeObject(window.targetGlobalSettings);
+                    if (result.globalSettings.clientCode) {
+                        result.clientCode = result.globalSettings.clientCode;
+                    }
+                }
 
                 // Get page params
                 if (window.targetPageParams) {
                     try {
-                        result.pageParams = this.serializeObject(window.targetPageParams() || {});
+                        const params = window.targetPageParams();
+                        if (params) {
+                            result.pageParams = this.serializeObject(params);
+                        }
                     } catch (e) {
-                        result.pageParams = { error: 'Failed to retrieve page params' };
+                        console.log('[AB Test Debugger] Could not execute targetPageParams:', e);
                     }
                 }
 
-                // Try to get delivered activities from sessionStorage
+                // Add intercepted activities if available
+                if (this.adobeTargetData && this.adobeTargetData.activities.length > 0) {
+                    result.activities = this.adobeTargetData.activities;
+                    console.log('[AB Test Debugger] Found intercepted activities:', result.activities.length);
+                }
+
+                // Extract from sessionStorage
                 try {
                     const sessionKeys = Object.keys(sessionStorage);
                     sessionKeys.forEach(key => {
                         if (key.includes('at-') || key.includes('adobe.target')) {
-                            const value = sessionStorage.getItem(key);
                             try {
+                                const value = sessionStorage.getItem(key);
                                 const parsed = JSON.parse(value);
-                                if (parsed.activities || parsed.execute || parsed.prefetch) {
-                                    this.extractActivitiesFromResponse(parsed, result);
+                                console.log('[AB Test Debugger] Found Target data in sessionStorage:', key, parsed);
+
+                                // Try to extract activities from session data
+                                if (parsed.execute || parsed.prefetch) {
+                                    this.processAdobeTargetResponse(parsed, 'sessionStorage');
                                 }
                             } catch (e) {
-                                // Not JSON, skip
+                                // Not JSON or can't parse
                             }
                         }
                     });
@@ -239,111 +309,303 @@
                 this.extractActivitiesFromCookies(result);
 
                 // Detect mboxes on the page
-                this.detectMboxesV2(result);
+                this.detectMboxes(result);
 
-                // Try to get active offers from data attributes
-                this.detectOffersFromDOM(result);
+                // Add client code from intercepted data
+                if (!result.clientCode && this.adobeTargetData && this.adobeTargetData.clientCode) {
+                    result.clientCode = this.adobeTargetData.clientCode;
+                }
 
-                console.log('[AB Test Debugger] Adobe Target 2.x data extracted:', result);
+                console.log('[AB Test Debugger] Adobe Target final data:', result);
                 return result;
             } catch (error) {
-                console.error('[AB Test Debugger] Adobe Target 2.x detection error:', error);
+                console.error('[AB Test Debugger] Adobe Target detection error:', error);
                 return null;
             }
         }
 
-        detectAdobeTargetV1() {
-            try {
-                const result = {
-                    isLoaded: true,
-                    version: '1.x',
-                    atjsVersion: 1,
-                    globalSettings: this.serializeObject(window.targetGlobalSettings || {}),
-                    pageParams: {},
+        isAdobeTargetURL(url) {
+            if (!url) return false;
+
+            // Adobe Target patterns
+            const patterns = [
+                /\/rest\/v\d+\/delivery\?/,
+                /\/mbox\/json\?/,
+                /\.tt\.omtrdc\.net/,
+                /\/event\?.*mbox/,
+                /mboxSession=/,
+                /mboxURL=/,
+                /\/delivery\?client=/,
+                /at\.js/,
+                /atjs-integration/
+            ];
+
+            const matches = patterns.some(pattern => pattern.test(url));
+            if (matches) {
+                console.log('[AB Test Debugger] Adobe Target URL detected:', url);
+            }
+            return matches;
+        }
+
+        processAdobeTargetResponse(responseData, url) {
+            console.log('[AB Test Debugger] Processing Adobe Target response from:', url);
+
+            if (!this.adobeTargetData) {
+                this.adobeTargetData = {
                     activities: [],
-                    mboxes: [],
-                    offers: []
+                    rawResponses: [],
+                    version: null,
+                    clientCode: null
+                };
+            }
+
+            // Store raw response
+            this.adobeTargetData.rawResponses.push({
+                url,
+                timestamp: Date.now(),
+                data: responseData
+            });
+
+            // Detect version from response structure
+            if (responseData.execute || responseData.prefetch) {
+                this.adobeTargetData.version = '2.x';
+            } else if (responseData.offers || responseData.offer || responseData.mbox) {
+                this.adobeTargetData.version = '1.x';
+            }
+
+            // Extract client code
+            if (typeof url === 'string') {
+                const clientMatch = url.match(/client=([a-zA-Z0-9_-]+)/);
+                if (clientMatch) {
+                    this.adobeTargetData.clientCode = clientMatch[1];
+                    console.log('[AB Test Debugger] Client code:', clientMatch[1]);
+                }
+            }
+
+            // Process different response formats
+
+            // at.js 2.x formats
+            if (responseData.execute && responseData.execute.pageLoad) {
+                console.log('[AB Test Debugger] Processing execute.pageLoad');
+                if (responseData.execute.pageLoad.options) {
+                    this.processAdobeTargetV2Options(responseData.execute.pageLoad.options);
+                }
+            }
+
+            if (responseData.execute && responseData.execute.mboxes) {
+                console.log('[AB Test Debugger] Processing execute.mboxes');
+                responseData.execute.mboxes.forEach(mbox => {
+                    if (mbox.options) {
+                        this.processAdobeTargetV2Options(mbox.options, mbox.name || mbox.mbox);
+                    }
+                });
+            }
+
+            if (responseData.prefetch && responseData.prefetch.mboxes) {
+                console.log('[AB Test Debugger] Processing prefetch.mboxes');
+                responseData.prefetch.mboxes.forEach(mbox => {
+                    if (mbox.options) {
+                        this.processAdobeTargetV2Options(mbox.options, mbox.name || mbox.mbox);
+                    }
+                });
+            }
+
+            // at.js 1.x formats
+            if (responseData.offers) {
+                console.log('[AB Test Debugger] Processing offers array (v1 style)');
+                this.processAdobeTargetV1Offers(responseData.offers, responseData.mbox);
+            }
+
+            // Single offer response (v1)
+            if (responseData.offer && !responseData.offers) {
+                console.log('[AB Test Debugger] Processing single offer (v1 style)');
+                this.processAdobeTargetV1Offers([responseData.offer], responseData.mbox);
+            }
+
+            // Direct mbox response (v1)
+            if (responseData.mbox && responseData.html) {
+                console.log('[AB Test Debugger] Processing mbox HTML response (v1 style)');
+                const offer = {
+                    mbox: responseData.mbox,
+                    content: responseData.html,
+                    activityId: responseData.activityId,
+                    activityName: responseData.activityName || responseData.activity,
+                    experienceId: responseData.experienceId,
+                    experienceName: responseData.experienceName,
+                    campaignId: responseData.campaignId,
+                    campaignName: responseData.campaignName
+                };
+                this.processAdobeTargetV1Offers([offer], responseData.mbox);
+            }
+
+            // Legacy format with activities array
+            if (responseData.activities && Array.isArray(responseData.activities)) {
+                console.log('[AB Test Debugger] Processing activities array (legacy format)');
+                responseData.activities.forEach(activity => {
+                    if (activity.offers) {
+                        this.processAdobeTargetV1Offers(activity.offers, activity.mbox);
+                    }
+                });
+            }
+
+            // Set detected platform
+            this.lastDetectedPlatform = 'adobe';
+
+            // Send update message
+            this.sendMessage({
+                action: 'PLATFORM_DETECTED',
+                payload: {
+                    platform: 'adobe',
+                    data: this.detectAdobeTarget()
+                }
+            });
+        }
+
+        processAdobeTargetV2Options(options, mboxName = 'target-global-mbox') {
+            if (!Array.isArray(options)) return;
+
+            options.forEach((option, index) => {
+                const activity = {
+                    id: null,
+                    name: 'Unknown Activity',
+                    experienceId: null,
+                    experienceName: null,
+                    content: option.content,
+                    type: 'at.js 2.x',
+                    mboxName: mboxName,
+                    isActive: true,
+                    timestamp: Date.now()
                 };
 
-                // Get page params
-                if (window.targetPageParams || window.targetPageParamsAll) {
-                    try {
-                        const pageParamsFn = window.targetPageParams || window.targetPageParamsAll;
-                        result.pageParams = this.serializeObject(pageParamsFn() || {});
-                    } catch (e) {
-                        result.pageParams = { error: 'Failed to retrieve page params' };
-                    }
+                // Extract from response tokens
+                if (option.responseTokens) {
+                    const tokens = option.responseTokens;
+                    activity.id = tokens['activity.id'] || `activity_${Date.now()}_${index}`;
+                    activity.name = tokens['activity.name'] || activity.name;
+                    activity.experienceId = tokens['experience.id'];
+                    activity.experienceName = tokens['experience.name'];
+                    activity.campaignId = tokens['campaign.id'];
+                    activity.campaignName = tokens['campaign.name'];
+                    activity.algorithm = tokens['activity.decisioningMethod'];
+                    activity.responseTokens = tokens;
+
+                    console.log('[AB Test Debugger] Extracted activity from tokens:', activity.name);
+                } else {
+                    // Create basic activity without tokens
+                    activity.id = `activity_${mboxName}_${Date.now()}_${index}`;
+                    activity.name = `${mboxName} Activity`;
+                    console.log('[AB Test Debugger] Created activity without tokens:', activity.name);
                 }
 
-                // Check mboxFactoryDefault for active mboxes
-                if (window.mboxFactoryDefault) {
-                    try {
-                        const mboxes = window.mboxFactoryDefault.getMboxes();
-                        if (mboxes && mboxes.length) {
-                            mboxes.forEach(mbox => {
-                                if (mbox && mbox.getName) {
-                                    result.mboxes.push({
-                                        name: mbox.getName(),
-                                        id: mbox.getId ? mbox.getId() : null,
-                                        status: 'detected',
-                                        version: 1
-                                    });
-                                }
-                            });
-                        }
-                    } catch (e) {
-                        console.log('[AB Test Debugger] Could not access mboxFactoryDefault');
-                    }
+                // Add or update activity
+                const existingIndex = this.adobeTargetData.activities.findIndex(
+                    a => a.id === activity.id && a.experienceId === activity.experienceId
+                );
+
+                if (existingIndex >= 0) {
+                    this.adobeTargetData.activities[existingIndex] = activity;
+                } else {
+                    this.adobeTargetData.activities.push(activity);
                 }
+            });
 
-                // Check for PCId (visitor ID)
-                if (window.mboxFactoryDefault && window.mboxFactoryDefault.getPCId) {
-                    try {
-                        result.visitorId = window.mboxFactoryDefault.getPCId().getId();
-                    } catch (e) {
-                        // Ignore
-                    }
-                }
-
-                // Extract activities from cookies
-                this.extractActivitiesFromCookies(result);
-
-                // Detect mboxes in DOM
-                this.detectMboxesV1(result);
-
-                console.log('[AB Test Debugger] Adobe Target 1.x data extracted:', result);
-                return result;
-            } catch (error) {
-                console.error('[AB Test Debugger] Adobe Target 1.x detection error:', error);
-                return null;
-            }
+            console.log('[AB Test Debugger] Total activities after processing:', this.adobeTargetData.activities.length);
         }
 
-        detectAdobeTargetGeneric() {
-            // Fallback detection for edge cases
-            const result = {
-                isLoaded: false,
-                version: 'Unknown',
-                atjsVersion: 0,
-                globalSettings: this.serializeObject(window.targetGlobalSettings || {}),
-                pageParams: {},
-                activities: [],
-                mboxes: [],
-                offers: []
-            };
+        processAdobeTargetV1Offers(offers, mboxName = null) {
+            if (!Array.isArray(offers)) return;
 
-            if (window.targetPageParams) {
-                try {
-                    result.pageParams = this.serializeObject(window.targetPageParams() || {});
-                } catch (e) {
-                    result.pageParams = { error: 'Failed to retrieve page params' };
+            offers.forEach((offer, index) => {
+                // Initialize with default values
+                let activityName = 'Unknown Activity';
+                let activityId = null;
+                let experienceId = null;
+                let experienceName = null;
+
+                // First priority: Check response tokens (v1 can have response tokens too)
+                if (offer.responseTokens) {
+                    console.log('[AB Test Debugger] Found response tokens in v1 offer:', offer.responseTokens);
+
+                    // Extract from response tokens
+                    activityName = offer.responseTokens['activity.name'] || activityName;
+                    activityId = offer.responseTokens['activity.id'];
+                    experienceId = offer.responseTokens['experience.id'];
+                    experienceName = offer.responseTokens['experience.name'];
+
+                    // Also check for other token formats
+                    if (!activityName || activityName === 'Unknown Activity') {
+                        activityName = offer.responseTokens['campaign.name'] ||
+                            offer.responseTokens['activity.name'] ||
+                            activityName;
+                    }
                 }
-            }
 
-            this.extractActivitiesFromCookies(result);
-            this.detectMboxesGeneric(result);
+                // Second priority: Check direct properties if not found in tokens
+                if (activityName === 'Unknown Activity') {
+                    activityName = offer.activityName ||
+                        offer.campaignName ||
+                        offer.name ||
+                        activityName;
+                }
 
-            return result;
+                // Set IDs with fallbacks
+                activityId = activityId ||
+                    offer.activityId ||
+                    offer.campaignId ||
+                    offer.id ||
+                    `offer_${Date.now()}_${index}`;
+
+                experienceId = experienceId ||
+                    offer.experienceId ||
+                    offer.offerId ||
+                    index.toString();
+
+                experienceName = experienceName ||
+                    offer.experienceName ||
+                    offer.offerName ||
+                    `Experience ${index + 1}`;
+
+                const activity = {
+                    id: activityId,
+                    name: activityName,
+                    experienceId: experienceId,
+                    experienceName: experienceName,
+                    campaignId: offer.campaignId || activityId,
+                    campaignName: offer.campaignName || activityName,
+                    content: offer.content || offer.html || offer,
+                    type: 'at.js 1.x',
+                    mboxName: mboxName || offer.mbox || offer.mboxName || 'unknown',
+                    isActive: true,
+                    timestamp: Date.now(),
+                    responseTokens: offer.responseTokens || {}
+                };
+
+                // Add any additional metadata
+                if (offer.state) {
+                    activity.state = offer.state;
+                }
+
+                if (offer.priority !== undefined) {
+                    activity.priority = offer.priority;
+                }
+
+                // Add raw offer data for debugging
+                activity.rawOffer = offer;
+
+                console.log('[AB Test Debugger] Extracted v1 activity:', activity.name, 'from offer:', offer);
+
+                const existingIndex = this.adobeTargetData.activities.findIndex(
+                    a => a.id === activity.id && a.experienceId === activity.experienceId
+                );
+
+                if (existingIndex >= 0) {
+                    this.adobeTargetData.activities[existingIndex] = activity;
+                } else {
+                    this.adobeTargetData.activities.push(activity);
+                }
+            });
+
+            console.log('[AB Test Debugger] Total activities after v1 processing:', this.adobeTargetData.activities.length);
         }
 
         extractActivitiesFromCookies(result) {
@@ -353,13 +615,10 @@
                 const [name, value] = cookie.trim().split('=');
                 if (!name || !value) return;
 
-                // Adobe Target cookies patterns
                 if (name.includes('mbox') ||
                     name.includes('at_') ||
-                    name.includes('adobe.target') ||
-                    name === 'PC' ||
-                    name === 'session' ||
-                    name === 'check') {
+                    name.includes('PC') ||
+                    name.includes('session')) {
 
                     const activity = {
                         name: name,
@@ -368,126 +627,41 @@
                         isActive: true
                     };
 
-                    // Try to parse activity details from cookie value
-                    if (name === 'PC' || name === 'mbox') {
-                        activity.visitorId = value;
-                    } else if (name.includes('at_check')) {
-                        activity.type = 'check_cookie';
-                    } else {
-                        // Try to extract campaign/activity info
-                        const parts = value.split('#');
-                        if (parts.length > 1) {
-                            activity.campaignId = parts[0];
-                            activity.experienceId = parts[1];
-                        }
+                    // Try to parse PC ID
+                    if (name === 'PC' || name.includes('PC#')) {
+                        result.visitorId = value.split('#')[0];
                     }
 
                     result.activities.push(activity);
+                    console.log('[AB Test Debugger] Found Target cookie:', name);
                 }
             });
         }
 
-        extractActivitiesFromResponse(response, result) {
-            // Extract from execute section
-            if (response.execute && response.execute.pageLoad) {
-                const pageLoad = response.execute.pageLoad;
-                if (pageLoad.options && pageLoad.options.length > 0) {
-                    pageLoad.options.forEach(option => {
-                        if (option.responseTokens) {
-                            const tokens = option.responseTokens;
-                            result.activities.push({
-                                name: tokens['activity.name'] || 'Unknown Activity',
-                                id: tokens['activity.id'],
-                                experienceId: tokens['experience.id'],
-                                experienceName: tokens['experience.name'],
-                                type: 'pageLoad',
-                                isActive: true,
-                                algorithm: tokens['activity.decisioningMethod'],
-                                tokens: tokens
-                            });
-                        }
-                    });
-                }
-            }
+        detectMboxes(result) {
+            const mboxSelectors = [
+                '[data-at-mbox]',
+                '[data-mbox-name]',
+                '.at-element-marker',
+                '[class*="at-element"]',
+                '[class*="mbox"]',
+                '.mboxDefault',
+                '[id*="mbox"]',
+                '.at-content-loaded',
+                '[data-at-src]'
+            ];
 
-            // Extract from prefetch section
-            if (response.prefetch && response.prefetch.mboxes) {
-                response.prefetch.mboxes.forEach(mbox => {
-                    if (mbox.options && mbox.options.length > 0) {
-                        mbox.options.forEach(option => {
-                            if (option.responseTokens) {
-                                const tokens = option.responseTokens;
-                                result.activities.push({
-                                    name: tokens['activity.name'] || mbox.name,
-                                    id: tokens['activity.id'],
-                                    experienceId: tokens['experience.id'],
-                                    experienceName: tokens['experience.name'],
-                                    mboxName: mbox.name,
-                                    type: 'prefetch',
-                                    isActive: true,
-                                    tokens: tokens
-                                });
-                            }
-                        });
-                    }
-                });
-            }
-        }
-
-        detectMboxesV2(result) {
-            // Look for Target containers in DOM
-            const targetElements = document.querySelectorAll(
-                '[data-at-mbox], [data-mbox-name], .at-element-marker, [class*="at-element"]'
-            );
-
-            targetElements.forEach(element => {
-                const mboxName = element.dataset.atMbox ||
-                    element.dataset.mboxName ||
-                    'target-global-mbox';
-
-                if (!result.mboxes.find(m => m.name === mboxName)) {
-                    result.mboxes.push({
-                        name: mboxName,
-                        selector: this.getSelector(element),
-                        status: 'rendered',
-                        version: 2,
-                        hasContent: element.children.length > 0
-                    });
-                }
-            });
-
-            // Check for global mbox
-            if (!result.mboxes.find(m => m.name === 'target-global-mbox')) {
-                result.mboxes.push({
-                    name: 'target-global-mbox',
-                    selector: 'body',
-                    status: 'detected',
-                    version: 2,
-                    isGlobal: true
-                });
-            }
-        }
-
-        detectMboxesV1(result) {
-            // Look for mbox elements (v1 style)
-            const mboxElements = document.querySelectorAll(
-                '[class*="mbox"], .mboxDefault, [id*="mbox"]'
-            );
-
+            const elements = document.querySelectorAll(mboxSelectors.join(','));
             const processedMboxes = new Set();
 
-            mboxElements.forEach(element => {
-                let mboxName = '';
+            elements.forEach(element => {
+                let mboxName = element.dataset?.atMbox ||
+                    element.dataset?.mboxName ||
+                    element.className?.match?.(/mbox-([^\s]+)/)?.[1] ||
+                    element.id?.match?.(/mbox-([^\s]+)/)?.[1];
 
-                // Extract mbox name from class or id
-                if (element.className && typeof element.className === 'string') {
-                    const match = element.className.match(/mbox-([^\s]+)/);
-                    if (match) mboxName = match[1];
-                }
-
-                if (!mboxName && element.id) {
-                    const match = element.id.match(/mbox-([^\s]+)/);
-                    if (match) mboxName = match[1];
+                if (!mboxName && element.className?.includes('mbox')) {
+                    mboxName = 'unnamed-mbox';
                 }
 
                 if (mboxName && !processedMboxes.has(mboxName)) {
@@ -495,65 +669,22 @@
                     result.mboxes.push({
                         name: mboxName,
                         selector: this.getSelector(element),
-                        status: element.style.visibility !== 'hidden' ? 'visible' : 'hidden',
-                        version: 1,
+                        status: 'detected',
                         hasContent: element.children.length > 0
                     });
+                    console.log('[AB Test Debugger] Found mbox:', mboxName);
                 }
             });
 
-            // Also check for mboxDefault elements
-            document.querySelectorAll('.mboxDefault').forEach(element => {
-                const parent = element.parentElement;
-                if (parent && parent.className.includes('mbox')) {
-                    const mboxName = parent.className.match(/mbox-([^\s]+)/)?.[1] || 'unknown';
-                    if (!processedMboxes.has(mboxName)) {
-                        processedMboxes.add(mboxName);
-                        result.mboxes.push({
-                            name: mboxName,
-                            selector: this.getSelector(parent),
-                            status: 'default',
-                            version: 1,
-                            hasDefault: true
-                        });
-                    }
-                }
-            });
-        }
-
-        detectMboxesGeneric(result) {
-            // Generic detection for any version
-            this.detectMboxesV1(result);
-            this.detectMboxesV2(result);
-        }
-
-        detectOffersFromDOM(result) {
-            // Look for offers applied to DOM elements
-            const elementsWithOffers = document.querySelectorAll('[data-offer-id], [data-activity-id]');
-
-            elementsWithOffers.forEach(element => {
-                const offer = {
-                    offerId: element.dataset.offerId,
-                    activityId: element.dataset.activityId,
-                    selector: this.getSelector(element),
-                    type: 'dom_offer'
-                };
-
-                if (offer.offerId || offer.activityId) {
-                    result.offers.push(offer);
-                }
-            });
-        }
-
-        getSelector(element) {
-            if (element.id) return `#${element.id}`;
-            if (element.className && typeof element.className === 'string') {
-                const classes = element.className.split(' ')
-                    .filter(c => c && !c.includes('mbox') && !c.includes('at-'))
-                    .slice(0, 2);
-                if (classes.length) return `.${classes.join('.')}`;
+            // Always include global mbox
+            if (!processedMboxes.has('target-global-mbox')) {
+                result.mboxes.push({
+                    name: 'target-global-mbox',
+                    selector: 'body',
+                    status: 'detected',
+                    isGlobal: true
+                });
             }
-            return element.tagName.toLowerCase();
         }
 
 

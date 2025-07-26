@@ -63,48 +63,34 @@ function AdobeTargetExperiments({ data, onUpdate }) {
         // Process activities
         if (data.activities && Array.isArray(data.activities)) {
             data.activities.forEach(activity => {
-                let type = 'COOKIE'; // Default type
+                let type = 'AB'; // Default type
 
                 // Determine type based on activity properties
-                if (activity.type === 'pageLoad') {
-                    type = 'PAGELOAD';
-                } else if (activity.type === 'prefetch') {
-                    type = 'PREFETCH';
-                } else if (activity.tokens) {
-                    // Use response tokens to determine type
-                    const decisioningMethod = activity.tokens['activity.decisioningMethod'];
-                    if (decisioningMethod) {
-                        if (decisioningMethod.includes('ab')) type = 'AB';
-                        else if (decisioningMethod.includes('xt')) type = 'XT';
-                        else if (decisioningMethod.includes('mvt')) type = 'MVT';
-                        else if (decisioningMethod.includes('ap')) type = 'AP';
-                        else if (decisioningMethod.includes('at')) type = 'AT';
-                        else if (decisioningMethod.includes('rec')) type = 'REC';
+                if (activity.type === 'at.js 2.x' || activity.type === 'at.js 1.x') {
+                    // Use algorithm or name to determine actual type
+                    const algorithm = activity.algorithm || '';
+                    const name = (activity.name || '').toLowerCase();
+
+                    if (algorithm.includes('experience-targeting') || name.includes('xt_')) {
+                        type = 'XT';
+                    } else if (algorithm.includes('multivariate') || name.includes('mvt_')) {
+                        type = 'MVT';
+                    } else if (algorithm.includes('auto-personalization') || name.includes('ap_')) {
+                        type = 'AP';
+                    } else if (algorithm.includes('auto-target') || name.includes('at_')) {
+                        type = 'AT';
+                    } else if (algorithm.includes('recommendations') || name.includes('rec_')) {
+                        type = 'REC';
                     }
-                } else if (activity.name) {
-                    // Try to infer from name
-                    const nameLower = activity.name.toLowerCase();
-                    if (nameLower.includes('xt_') || nameLower.includes('experience')) type = 'XT';
-                    else if (nameLower.includes('mvt_')) type = 'MVT';
-                    else if (nameLower.includes('ap_')) type = 'AP';
-                    else if (nameLower.includes('at_')) type = 'AT';
-                    else if (nameLower.includes('rec_')) type = 'REC';
-                    else if (nameLower.includes('ab_') || nameLower.includes('test')) type = 'AB';
+                } else if (activity.type === 'cookie') {
+                    type = 'COOKIE';
                 }
 
                 const activityData = {
-                    id: activity.id || activity.name || `activity_${Date.now()}_${Math.random()}`,
-                    name: activity.name || 'Unknown Activity',
-                    type: activity.type || 'unknown',
-                    value: activity.value,
-                    isActive: activity.isActive !== false,
-                    campaignId: activity.campaignId,
-                    experienceId: activity.experienceId,
-                    experienceName: activity.experienceName,
-                    algorithm: activity.algorithm,
-                    mboxName: activity.mboxName,
-                    tokens: activity.tokens,
-                    ...activity
+                    ...activity,
+                    id: activity.id || activity.campaignId || `activity_${Date.now()}_${Math.random()}`,
+                    name: activity.name || activity.campaignName || 'Unknown Activity',
+                    displayType: type
                 };
 
                 groups[type].push(activityData);

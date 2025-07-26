@@ -1,32 +1,73 @@
 (() => {
     'use strict';
 
-    class OptimizelyEventTracker {
+    class OptimizelyEventTracker extends window.BaseEventTracker {
         constructor() {
-            this.isTracking = false;
-            this.events = [];
-            this.maxEvents = 100;
-            this.floatingWindow = null;
+            super('optimizely', {
+                platformName: 'Optimizely',
+                sourceId: 'ab-test-event-tracker',
+                headerColor: 'linear-gradient(135deg, #0078d4 0%, #005a9e 100%)',
+                icon: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 2v5l3 3M14 8A6 6 0 11 2 8a6 6 0 0112 0z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+            });
+
             this.originalOptimizelyPush = null;
             this.notificationListeners = [];
-            this.isIntercepting = false; // Flag to prevent double interception
-
-            console.log('[Optimizely Event Tracker] Initialized');
-            this.init();
+            this.isIntercepting = false;
         }
 
         init() {
             this.setupMessageListener();
             this.createFloatingWindow();
         }
+        isPlatformActive() {
+            return !!window.optimizely;
+        }
+        startPlatformTracking() {
+            if (!window.optimizely) {
+                console.warn('[Optimizely Event Tracker] Optimizely not found on page');
+                this.addEvent({
+                    type: 'error',
+                    category: 'System',
+                    name: 'Optimizely Not Found',
+                    details: { message: 'Optimizely SDK not detected on this page' }
+                });
+                return;
+            }
+
+            this.interceptOptimizelyPush();
+            this.setupNotificationListeners();
+            this.trackInitialState();
+        }
+
+        stopPlatformTracking() {
+            this.restoreOptimizelyPush();
+
+            this.notificationListeners.forEach(id => {
+                try {
+                    window.optimizely?.notificationCenter?.removeNotificationListener?.(id);
+                } catch (e) {
+                    console.error('[Optimizely Event Tracker] Error removing listener:', e);
+                }
+            });
+            this.notificationListeners = [];
+        }
 
         setupMessageListener() {
             window.addEventListener('message', (event) => {
                 if (event.data?.source !== 'ab-test-event-tracker') return;
 
+                console.log('[Optimizely Event Tracker] Received message:', event.data);
+
                 switch (event.data.action) {
                     case 'TOGGLE_TRACKING':
-                        this.toggleTracking(event.data.enabled);
+                        if (event.data.autoStart) {
+                            // Auto-start case - show window and flush captured events
+                            this.showFloatingWindow();
+                            this.flushCapturedEvents();
+                        } else {
+                            // Normal toggle
+                            this.toggleTracking(event.data.enabled);
+                        }
                         break;
                     case 'CLEAR_EVENTS':
                         this.clearEvents();
@@ -69,6 +110,26 @@
 
             // Track initial page state
             this.trackInitialState();
+        }
+
+        startCapturing() {
+            // Start intercepting immediately to capture page load events
+            this.isTracking = true;
+            this.interceptOptimizelyPush();
+            this.setupNotificationListeners();
+
+            // Track initial state as soon as possible
+            setTimeout(() => this.trackInitialState(), 100);
+        }
+
+        flushCapturedEvents() {
+            // Add any captured events to the main events array
+            if (this.capturedEvents.length > 0) {
+                console.log('[Optimizely Event Tracker] Flushing', this.capturedEvents.length, 'captured events');
+                this.events = [...this.capturedEvents, ...this.events];
+                this.capturedEvents = [];
+                this.updateFloatingWindow();
+            }
         }
 
         stopTracking() {
@@ -408,14 +469,24 @@
                 ...eventData
             };
 
-            this.events.unshift(event);
+            // If window is not ready, store in captured events
+            if (!this.floatingWindow || this.floatingWindow.classList.contains('hidden')) {
+                this.capturedEvents.unshift(event);
 
-            // Keep only the latest events
-            if (this.events.length > this.maxEvents) {
-                this.events = this.events.slice(0, this.maxEvents);
+                // Keep captured events limited
+                if (this.capturedEvents.length > this.maxEvents) {
+                    this.capturedEvents = this.capturedEvents.slice(0, this.maxEvents);
+                }
+            } else {
+                this.events.unshift(event);
+
+                // Keep only the latest events
+                if (this.events.length > this.maxEvents) {
+                    this.events = this.events.slice(0, this.maxEvents);
+                }
+
+                this.updateFloatingWindow();
             }
-
-            this.updateFloatingWindow();
         }
 
         clearEvents() {
@@ -560,6 +631,22 @@
             }).join('');
         }
 
+        renderEvent(event) {
+            const categoryClass = event.category.toLowerCase().replace(/\s+/g, '-');
+            const typeClass = event.type.toLowerCase().replace(/\s+/g, '-');
+
+            return `
+        <div class="opt-event-item ${categoryClass} ${typeClass}">
+          <div class="opt-event-header">
+            <span class="opt-event-time">${event.timestamp}</span>
+            <span class="opt-event-category ${categoryClass}">${event.category}</span>
+          </div>
+          <div class="opt-event-name">${event.name}</div>
+          ${this.renderEventDetails(event)}
+        </div>
+      `;
+        }
+
         renderEventDetails(event) {
             if (!event.details || Object.keys(event.details).length === 0) {
                 return '';
@@ -614,7 +701,7 @@
     }
 
     // Initialize event tracker
-    if (!window.__optimizelyEventTracker) {
+    if (window.BaseEventTracker && !window.__optimizelyEventTracker) {
         window.__optimizelyEventTracker = new OptimizelyEventTracker();
 
         // Add styles (same as before)

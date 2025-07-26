@@ -8,6 +8,7 @@ module.exports = {
         popup: path.resolve(__dirname, '../src/popup/index.js'),
         content: path.resolve(__dirname, '../src/content/content.js'),
         injected: path.resolve(__dirname, '../src/injected/detector.js'),
+        'base-event-tracker': path.resolve(__dirname, '../src/injected/base-event-tracker.js'),
         'event-tracker': path.resolve(__dirname, '../src/injected/event-tracker.js'),
         'vwo-event-tracker': path.resolve(__dirname, '../src/injected/vwo-event-tracker.js'),
         'adobe-target-event-tracker': path.resolve(__dirname, '../src/injected/adobe-target-event-tracker.js'),

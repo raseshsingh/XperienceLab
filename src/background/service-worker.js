@@ -7,7 +7,7 @@ const keepAlive = () => setInterval(chrome.runtime.getPlatformInfo, 20e3);
 chrome.runtime.onStartup.addListener(keepAlive);
 keepAlive();
 
-// Handle installation with new default preferences
+// Handle installation with default preferences
 chrome.runtime.onInstalled.addListener(async (details) => {
     if (details.reason === 'install') {
         await Storage.set(STORAGE_KEYS.USER_PREFERENCES, {
@@ -22,6 +22,32 @@ chrome.runtime.onInstalled.addListener(async (details) => {
         if (preferences.autoOpenEventTracker === undefined) {
             preferences.autoOpenEventTracker = false;
             await Storage.set(STORAGE_KEYS.USER_PREFERENCES, preferences);
+        }
+    }
+});
+
+// Listen for tab updates to inject content script if needed
+chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
+    if (changeInfo.status === 'complete' && tab.url &&
+        (tab.url.startsWith('http://') || tab.url.startsWith('https://'))) {
+
+        // Check if auto-open is enabled
+        const preferences = await Storage.get(STORAGE_KEYS.USER_PREFERENCES) || {};
+
+        if (preferences.autoOpenEventTracker) {
+            console.log('[Background] Auto-open event tracker enabled, notifying tab:', tabId);
+
+            // The content script should already be injected via manifest
+            // Just send a message to ensure it checks the preference
+            try {
+                chrome.tabs.sendMessage(tabId, {
+                    type: 'CHECK_AUTO_OPEN',
+                    preferences: preferences
+                });
+            } catch (e) {
+                // Content script might not be ready yet
+                console.log('[Background] Could not send message to tab, content script may not be ready');
+            }
         }
     }
 });

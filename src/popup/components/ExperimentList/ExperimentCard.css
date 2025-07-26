@@ -310,3 +310,69 @@
     font-family: 'SF Mono', Monaco, 'Courier New', monospace;
     word-break: break-all;
 }
+
+.content-preview {
+    margin-top: 12px;
+    padding: 12px;
+    background-color: #f8f9fa;
+    border-radius: 6px;
+    font-size: 11px;
+}
+
+.content-preview summary {
+    cursor: pointer;
+    font-weight: 600;
+    color: #586069;
+    user-select: none;
+}
+
+.content-preview summary:hover {
+    color: #0366d6;
+}
+
+.content-display {
+    margin-top: 8px;
+    padding: 8px;
+    background-color: white;
+    border: 1px solid #e1e4e8;
+    border-radius: 4px;
+    font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+    font-size: 11px;
+    white-space: pre-wrap;
+    word-break: break-all;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.adobe-notice.info {
+    background-color: #e3f2fd;
+    border-color: #2196f3;
+    color: #0d47a1;
+}
+
+
+.experiment-badge.state {
+    background-color: #f0f4f8;
+    color: #334e68;
+    font-size: 10px;
+}
+
+.raw-data-preview {
+    margin-top: 12px;
+    padding: 12px;
+    background-color: #f8f9fa;
+    border-radius: 6px;
+    font-size: 11px;
+    border: 1px dashed #dee2e6;
+}
+
+.raw-data-preview summary {
+    cursor: pointer;
+    font-weight: 600;
+    color: #dc3545;
+    user-select: none;
+}
+
+.raw-data-preview summary:hover {
+    color: #c82333;
+}

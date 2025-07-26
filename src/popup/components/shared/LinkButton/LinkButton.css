@@ -1,0 +1,32 @@
+.link-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px;
+    background: transparent;
+    border: 1px solid #d1d5da;
+    border-radius: 4px;
+    color: #586069;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.link-button.small {
+    width: 24px;
+    height: 24px;
+}
+
+.link-button.medium {
+    width: 32px;
+    height: 32px;
+}
+
+.link-button:hover {
+    background-color: #f6f8fa;
+    border-color: #0366d6;
+    color: #0366d6;
+}
+
+.link-button:active {
+    transform: scale(0.95);
+}

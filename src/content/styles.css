@@ -1,0 +1,4 @@
+/* Content script styles - kept minimal to avoid conflicts with page styles */
+.ab-test-debugger-injected {
+    display: none !important;
+}

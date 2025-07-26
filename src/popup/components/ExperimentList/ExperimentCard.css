@@ -1,0 +1,161 @@
+.experiment-card {
+    background: white;
+    border: 1px solid #e1e4e8;
+    border-radius: 8px;
+    padding: 16px;
+    margin: 12px 16px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    transition: all 0.2s ease;
+}
+
+.experiment-card:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    transform: translateY(-1px);
+}
+
+.experiment-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 12px;
+}
+
+.experiment-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+}
+
+.experiment-title h3 {
+    font-size: 14px;
+    font-weight: 600;
+    color: #1a1a1a;
+    margin: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 200px;
+}
+
+.experiment-badge {
+    font-size: 11px;
+    font-weight: 500;
+    padding: 2px 8px;
+    border-radius: 12px;
+    background-color: #e1e4e8;
+    color: #586069;
+    white-space: nowrap;
+}
+
+.experiment-badge.active {
+    background-color: #d1f5d3;
+    color: #1e7e34;
+}
+
+.experiment-badge.new {
+    background-color: #fff3cd;
+    color: #856404;
+}
+
+.experiment-badge.paused {
+    background-color: #ffeaa7;
+    color: #d63031;
+}
+
+.experiment-badge.stopped {
+    background-color: #ffcccc;
+    color: #721c24;
+}
+
+.experiment-info {
+    margin-bottom: 12px;
+}
+
+.info-row {
+    display: flex;
+    align-items: baseline;
+    margin-bottom: 6px;
+    font-size: 12px;
+}
+
+.info-label {
+    font-weight: 500;
+    color: #586069;
+    margin-right: 8px;
+    min-width: 100px;
+}
+
+.info-value {
+    color: #1a1a1a;
+    flex: 1;
+    word-break: break-word;
+}
+
+.info-value.changes {
+    font-style: italic;
+    color: #0366d6;
+}
+
+.experiment-controls {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid #e1e4e8;
+}
+
+.experiment-controls label {
+    font-size: 12px;
+    font-weight: 500;
+    color: #586069;
+}
+
+.variation-select {
+    flex: 1;
+    padding: 6px 10px;
+    font-size: 12px;
+    border: 1px solid #d1d5da;
+    border-radius: 6px;
+    background-color: #fafbfc;
+    color: #1a1a1a;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.variation-select:hover {
+    background-color: #ffffff;
+    border-color: #0366d6;
+}
+
+.variation-select:focus {
+    outline: none;
+    border-color: #0366d6;
+    box-shadow: 0 0 0 3px rgba(3, 102, 214, 0.1);
+}
+
+/* Previous styles remain the same, add these: */
+
+.experiment-badge.inactive {
+    background-color: #e1e4e8;
+    color: #586069;
+}
+
+.experiment-badge.loading {
+    background-color: #dbeafe;
+    color: #1e40af;
+}
+
+.experiment-badges {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+
+.no-variations-message {
+    font-style: italic;
+    color: #666;
+    font-size: 12px;
+    margin: 0;
+}

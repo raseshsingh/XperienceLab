@@ -1,0 +1,12 @@
+.experiment-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 0;
+}
+
+.no-experiments {
+    text-align: center;
+    padding: 40px 20px;
+    color: #666;
+    font-style: italic;
+}

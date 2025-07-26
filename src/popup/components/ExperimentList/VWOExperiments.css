@@ -1,0 +1,134 @@
+.vwo-experiments {
+    padding: 8px 0;
+}
+
+.accordion-title-content {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+}
+
+.type-icon {
+    font-size: 18px;
+    line-height: 1;
+}
+
+.type-label {
+    flex: 1;
+    font-weight: 500;
+    color: #1a1a1a;
+}
+
+.experiment-count {
+    background-color: #e1e4e8;
+    color: #586069;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 500;
+    min-width: 24px;
+    text-align: center;
+}
+
+.experiments-container {
+    padding: 8px 0;
+}
+
+/* Visual AB - Primary style */
+.vwo-type-visual-ab .accordion-header {
+    background-color: #f3f0ff;
+    border-color: #7c3aed;
+}
+
+.vwo-type-visual-ab .accordion-header:hover {
+    background-color: #ede9fe;
+}
+
+.vwo-type-visual-ab .experiment-count {
+    background-color: #7c3aed;
+    color: white;
+}
+
+/* Track - Analytics style */
+.vwo-type-track .accordion-header {
+    background-color: #f0f9ff;
+    border-color: #3b82f6;
+}
+
+.vwo-type-track .accordion-header:hover {
+    background-color: #e0f2fe;
+}
+
+/* Heatmap - Warm style */
+.vwo-type-analyze-heatmap .accordion-header {
+    background-color: #fef3c7;
+    border-color: #f59e0b;
+}
+
+.vwo-type-analyze-heatmap .accordion-header:hover {
+    background-color: #fde68a;
+}
+
+/* Recording - Media style */
+.vwo-type-analyze-recording .accordion-header {
+    background-color: #fee2e2;
+    border-color: #ef4444;
+}
+
+.vwo-type-analyze-recording .accordion-header:hover {
+    background-color: #fecaca;
+}
+
+/* Form - Input style */
+.vwo-type-analyze-form .accordion-header {
+    background-color: #f0fdf4;
+    border-color: #10b981;
+}
+
+.vwo-type-analyze-form .accordion-header:hover {
+    background-color: #dcfce7;
+}
+
+/* Funnel - Flow style */
+.vwo-type-funnel .accordion-header {
+    background-color: #fefce8;
+    border-color: #facc15;
+}
+
+.vwo-type-funnel .accordion-header:hover {
+    background-color: #fef9c3;
+}
+
+/* Deploy - Action style */
+.vwo-type-deploy .accordion-header {
+    background-color: #f5f3ff;
+    border-color: #8b5cf6;
+}
+
+.vwo-type-deploy .accordion-header:hover {
+    background-color: #ede9fe;
+}
+
+/* Survey - Feedback style */
+.vwo-type-survey .accordion-header {
+    background-color: #ecfdf5;
+    border-color: #14b8a6;
+}
+
+.vwo-type-survey .accordion-header:hover {
+    background-color: #d1fae5;
+}
+
+/* Insights - Data style */
+.vwo-type-insights-metric,
+.vwo-type-insights-funnel {
+    .accordion-header {
+        background-color: #f8fafc;
+        border-color: #64748b;
+    }
+
+    .accordion-header:hover {
+        background-color: #f1f5f9;
+    }
+}
